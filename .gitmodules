@@ -1,0 +1,3 @@
+[submodule "deps/hare"]
+	path = deps/hare
+	url = https://github.com/Arseny802/hare.git

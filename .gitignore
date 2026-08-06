@@ -1,3 +1,11 @@
+*build
+.cache
+
+CMakeUserPresets.json
+compile_commands.json
+
+config.json
+
 # Prerequisites
 *.d
 
