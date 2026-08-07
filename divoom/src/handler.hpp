@@ -1,12 +1,11 @@
 #pragma once
 #include "common/common.hpp"
 
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include <boost/variant.hpp>
 
 namespace divoomdev::divoom {
 
@@ -46,7 +45,27 @@ struct handler {
   const RequestType request_type = RequestType::GET;
 
  protected:
+  std::unique_ptr<nlohmann::json> parse_json(const std::string& data);
+
   std::optional<ResponseT> result_;
   RequestDataT request_;
 };
+
+template<typename T1, typename T2>
+std::unique_ptr<nlohmann::json> handler<T1, T2>::parse_json(const std::string& data) {
+  std::unique_ptr<nlohmann::json> j;
+  try {
+    j = std::make_unique<nlohmann::json>(nlohmann::json::parse(data));
+  } catch (const nlohmann::json::parse_error& e) {
+    log()->error("JSON parse error: {}", e.what());
+    return nullptr;
+  }
+
+  if ((*j)["ReturnCode"] != 0) {
+    log()->error("API error: {}", j->value("ReturnMessage", "Unknown error"));
+    return nullptr;
+  }
+  return j;
+}
+
 }  // namespace divoomdev::divoom

@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 
 namespace divoomdev::common {
 
@@ -9,5 +10,7 @@ struct device {
   std::string mac;
   int hardware;
 };
+
+using device_list = std::vector<common::device>;
 
 }  // namespace divoomdev::common

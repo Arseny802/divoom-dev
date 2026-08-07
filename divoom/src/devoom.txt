@@ -1,7 +1,0 @@
-
-
-curl https://app.divoom-gz.com/Device/ReturnSameLANDevice
-curl http://192.168.0.109:9000/divoom_api -H "Content-Type: application/json" -H "Accept: application/json" -d "{\"Command\":\"Channel/SetBrightness\", \"Brightness\":100}"
-curl http://192.168.0.109:9000/divoom_api -H "Content-Type: application/json" -H "Accept: application/json" -d "{\"Command\":\"Device/SysReboot\"}"
-curl http://192.168.0.109:9000/divoom_api -H "Content-Type: application/json" -H "Accept: application/json" -d "{\"Command\":\"Device/SetTime24Flag\", \"Mode\":1}"
-curl http://192.168.0.109:9000/divoom_api -H "Content-Type: application/json" -H "Accept: application/json" -d "{\"Command\":\"Device/SetMirrorMode\", \"Mode\":1}"

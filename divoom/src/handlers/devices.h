@@ -1,6 +1,6 @@
 #pragma once
 #include "common/device.h"
-#include "divoom/handler.h"
+#include "handler.hpp"
 
 namespace divoomdev::divoom::handlers {
 

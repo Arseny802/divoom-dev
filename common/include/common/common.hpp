@@ -1,5 +1,7 @@
 #pragma once
+#include "clock.h"
 #include "device.h"
+
 
 namespace divoomdev::common {
 

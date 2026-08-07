@@ -1,12 +1,14 @@
 #include "divoom/client.h"
+#include "common/clock.h"
 #include "hare/defs.h"
 #include <cpr/status_codes.h>
 
-#include "divoom/handler.h"
 #include "handlers/commands/brightness.h"
+#include "handlers/commands/clock_select_id.h"
 #include "handlers/commands/mirror.h"
 #include "handlers/commands/reboot.h"
 #include "handlers/commands/time_format.h"
+#include "handlers/device_clockes.h"
 #include "handlers/devices.h"
 
 namespace divoomdev::divoom {
@@ -14,7 +16,6 @@ namespace {
 
 cpr::Header get_base_headers() {
   return {
-      //{"X-Yandex-Music-Client", user_id},
       //{"Authorization", format("OAuth {}", token)},
       {"Content-Type", "application/json"},
       {"accept", "application/json"},
@@ -30,11 +31,24 @@ client::~client() {
   AUTOTRACE;
 }
 
-std::vector<common::device> client::get_devices() {
+common::device_list client::get_devices() {
   auto handler = std::make_shared<handlers::devices>();
 
-  if (!execute<nullptr_t, std::vector<common::device>>(handler, host_)) {
-    log()->error("");
+  if (!execute(handler, host_)) {
+    log()->error("Could not get device list!");
+    return {};
+  }
+
+  return handler->get_result();
+}
+
+common::clock_list client::get_device_clockes(int device_id) {
+  handlers::device_clockes_request request;
+  request.DeviceId = device_id;
+  auto handler = std::make_shared<handlers::device_clockes>(std::move(request));
+
+  if (!execute(handler, host_)) {
+    log()->error("Could not get device clock list!");
     return {};
   }
 
@@ -43,26 +57,30 @@ std::vector<common::device> client::get_devices() {
 
 bool client::do_reboot(const std::string& device_ip) {
   auto handler = std::make_shared<handlers::commands::reboot>();
-  return execute<handlers::commands::command, nullptr_t>(handler, device_ip);
+  return execute(handler, device_ip);
 }
 
 bool client::set_brightness(const std::string& device_ip, int brightness) {
   auto handler = std::make_shared<handlers::commands::brightness>(brightness);
-  return execute<handlers::commands::command_brightness, nullptr_t>(handler, device_ip);
+  return execute(handler, device_ip);
 }
 
 bool client::set_mirror(const std::string& device_ip, int mode) {
   auto handler = std::make_shared<handlers::commands::mirror>(mode);
-  return execute<handlers::commands::command_mirror, nullptr_t>(handler, device_ip);
+  return execute(handler, device_ip);
 }
 
 bool client::set_time_format(const std::string& device_ip, int mode) {
   auto handler = std::make_shared<handlers::commands::time_format>(mode);
-  return execute<handlers::commands::command_timeformat, nullptr_t>(handler, device_ip);
+  return execute(handler, device_ip);
+}
+bool client::set_clock_id(const std::string& device_ip, int clock_id) {
+  auto handler = std::make_shared<handlers::commands::clock_select_id>(clock_id);
+  return execute(handler, device_ip);
 }
 
-template<typename T1, typename T2>
-bool client::execute(const std::shared_ptr<handler<T1, T2>>& handler, std::string host) {
+template<typename HandlerT>
+bool client::execute(const std::shared_ptr<HandlerT>& handler, std::string host) {
   assert(handler);
 
   try {

@@ -27,25 +27,14 @@ std::string devices::get_path(const std::string_view host) const noexcept {
 
 bool devices::handle(const std::string& json_str) {
   result_ = std::nullopt;
-  nlohmann::json j;
-  try {
-    j = nlohmann::json::parse(json_str);
-  } catch (const nlohmann::json::parse_error& e) {
-    log()->error("JSON parse error: {}", e.what());
-    return false;
-  }
+  auto json = parse_json(json_str);
 
-  if (j["ReturnCode"] != 0) {
-    log()->error("API error: {}", j.value("ReturnMessage", "Unknown error"));
-    return false;
-  }
-
-  if (!j.contains("DeviceList") || !j["DeviceList"].is_array()) {
+  if (!json->contains("DeviceList") || !(*json)["DeviceList"].is_array()) {
     return false;
   }
 
   result_ = ResultType();
-  for (const auto& device_json: j["DeviceList"]) {
+  for (const auto& device_json: (*json)["DeviceList"]) {
     result_->emplace_back(parse_device_object(device_json));
   }
 

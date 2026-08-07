@@ -25,6 +25,8 @@ int main() {
     // log()->info("set_mirror: {}", client.set_mirror(dev.private_ip, 0));
     // log()->info("set_time_format: {}", client.set_time_format(dev.private_ip, 1));
     // log()->info("do_reboot: {}", client.do_reboot(dev.private_ip));
+    // log()->info("set_clock_id: {}", client.set_clock_id(dev.private_ip, 383897));
+    // log()->info("set_clock_id: {}", client.set_clock_id(dev.private_ip, 383923));
   }
 
   return EXIT_SUCCESS;
