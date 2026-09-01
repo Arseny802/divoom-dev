@@ -1,3 +1,6 @@
 [submodule "deps/hare"]
 	path = deps/hare
 	url = https://github.com/Arseny802/hare.git
+[submodule "deps/cmake_tools"]
+	path = deps/cmake_tools
+	url = https://github.com/Arseny802/cmake_tools

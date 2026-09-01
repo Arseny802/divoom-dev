@@ -1,5 +1,5 @@
 #pragma once
-#include "common/common_pch.h"
+#include <gpch.h>
 
 #ifndef PROJECT_NAME
 #  define PROJECT_NAME "divoomdev"

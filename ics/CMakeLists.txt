@@ -1,0 +1,15 @@
+project(divoomdev.ics VERSION ${CMAKE_PROJECT_VERSION})
+
+
+add_target(${PROJECT_NAME} STATIC
+  INCLUDE_PATH
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  SOURCES_PATH 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  PCH_PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pch.h
+  USES_PUBLIC 
+    divoomdev.common
+  TEST_SOURCES_PATH 
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests
+)
