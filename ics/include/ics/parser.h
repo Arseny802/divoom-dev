@@ -1,23 +1,15 @@
 #pragma once
-#include "common/common.hpp"
-#include <memory>
+#include "scheduled_event.h"
 #include <string>
+#include <vector>
 
 namespace divoomdev::ics {
 
-class parser final {
- public:
-  struct options {
-    bool ignore_repeat = false;
-  };
+/// Загружает ICS-файл по URL и возвращает события на ближайшие 48 часов.
+/// События со статусом CANCELED исключаются.
+std::vector<scheduled_event> fetch_events(const std::string& url);
 
-  parser(options opt);
-  ~parser();
-
-  bool parse(const std::string& ics_data);
-
- protected:
-  options options_;
-};
+/// Парсит ICS-контент (строку) и возвращает события на ближайшие 48 часов.
+std::vector<scheduled_event> parse_calendar(const std::string& ics_content);
 
 }  // namespace divoomdev::ics

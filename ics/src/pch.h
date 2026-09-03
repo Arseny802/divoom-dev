@@ -8,6 +8,6 @@
 #  define MODULE_NAME "ics"
 #endif
 #include <hare/hare.hpp>
-namespace divoomdev::divoom {
-MAKE_GETTER(log)
-}  // namespace divoomdev::divoom
+namespace divoomdev::ics {
+MAKE_GETTER(hlog)
+}  // namespace divoomdev::ics

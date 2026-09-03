@@ -13,6 +13,7 @@ add_target(${PROJECT_NAME} EXECUTABLE
     divoomdev.common
     divoomdev.divoom
     divoomdev.storage
+    divoomdev.ics
     cpr::cpr
   TEST_SOURCES_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/tests
