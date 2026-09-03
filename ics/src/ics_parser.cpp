@@ -2,11 +2,15 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <climits>
+#include <cmath>
 #include <cpr/cpr.h>
 #include <ctime>
+#include <map>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace divoomdev::ics {
 
@@ -146,6 +150,121 @@ datetime_info parse_datetime_field(const std::string& raw_line) {
   return info;
 }
 
+// Карта TZID -> смещение от UTC в часах, собранная из блоков VTIMEZONE календаря.
+std::map<std::string, int> g_tzid_offsets;
+
+/// Парсит значение TZOFFSETTO вида "+0300"/"-0700"/"+0530" в часы (со знаком).
+int parse_tzoffset(const std::string& s) {
+  if (s.size() < 5)
+    return INT_MIN;
+  int sign = 1;
+  size_t i = 0;
+  if (s[0] == '+') {
+    i = 1;
+  } else if (s[0] == '-') {
+    sign = -1;
+    i = 1;
+  }
+  if (i + 4 > s.size())
+    return INT_MIN;
+  try {
+    int hh = std::stoi(s.substr(i, 2));
+    int mm = std::stoi(s.substr(i + 2, 2));
+    int hours = hh + (mm >= 30 ? 1 : 0);  // округляем получасовые смещения
+    return sign * hours;
+  } catch (...) {
+    return INT_MIN;
+  }
+}
+
+/// Предварительно проходит по VTIMEZONE и запоминает TZID -> смещение.
+/// Это нужно для Outlook/Exchange с Windows-именами поясов (Russian Standard Time и т.п.).
+void collect_tzid_offsets(const std::string& ics_content) {
+  g_tzid_offsets.clear();
+  std::istringstream stream(ics_content);
+  std::string line;
+  bool in_tz = false;
+  bool in_std = false;
+  std::string cur_tzid;
+  int std_offset = INT_MIN;
+  while (std::getline(stream, line)) {
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    std::string t = trim(line);
+    if (t.rfind("BEGIN:VTIMEZONE", 0) == 0) {
+      in_tz = true;
+      in_std = false;
+      cur_tzid.clear();
+      std_offset = INT_MIN;
+      continue;
+    }
+    if (!in_tz)
+      continue;
+    if (t.rfind("END:VTIMEZONE", 0) == 0) {
+      if (!cur_tzid.empty() && std_offset != INT_MIN)
+        g_tzid_offsets[cur_tzid] = std_offset;
+      in_tz = false;
+      in_std = false;
+      continue;
+    }
+    if (t.rfind("BEGIN:STANDARD", 0) == 0) {
+      in_std = true;
+      continue;
+    }
+    if (t.rfind("BEGIN:DAYLIGHT", 0) == 0) {
+      in_std = false;
+      continue;
+    }
+    if (t.rfind("TZID:", 0) == 0) {
+      cur_tzid = t.substr(5);
+    } else if (in_std && t.rfind("TZOFFSETTO:", 0) == 0) {
+      std_offset = parse_tzoffset(t.substr(11));
+    }
+  }
+}
+
+/// Форматирует time_point в локальную дату/время "%Y%m%dT%H%M%S" (для EXDATE/оверрайдов).
+std::string fmt_local_dt(std::chrono::time_point<std::chrono::system_clock> tp) {
+  auto t = std::chrono::system_clock::to_time_t(tp);
+  struct tm tm;
+  localtime_s(&tm, &t);
+  char buf[20];
+  strftime(buf, sizeof(buf), "%Y%m%dT%H%M%S", &tm);
+  return std::string(buf);
+}
+
+/// Возвращает смещение TZID относительно UTC в часах
+/// или INT_MIN, если пояс неизвестен (тогда используем системное локальное время).
+int utc_offset_hours(const std::string& tz) {
+  // Сначала собранная из VTIMEZONE карта (Windows-имена Outlook и пр.).
+  auto it = g_tzid_offsets.find(tz);
+  if (it != g_tzid_offsets.end())
+    return it->second;
+
+  static const std::pair<const char*, int> kOffsets[] = {
+      {"UTC", 0},
+      {"EUROPE/KALININGRAD", 2},
+      {"EUROPE/MOSCOW", 3},
+      {"EUROPE/VOLGOGRAD", 3},
+      {"EUROPE/SAMARA", 4},
+      {"ASIA/YEKATERINBURG", 5},
+      {"ASIA/BANGKOK", 7},
+      {"EUROPE/LONDON", 1},
+      // Windows-имена Outlook (запасной вариант)
+      {"RUSSIAN STANDARD TIME", 3},
+      {"GMT STANDARD TIME", 0},
+      {"SE ASIA STANDARD TIME", 7},
+      {"EKATERINBURG STANDARD TIME", 5},
+      {"RUSSIA TIME ZONE 3", 4},
+  };
+  std::string key = to_upper(tz);
+  for (const auto& e: kOffsets) {
+    if (key == e.first)
+      return e.second;
+  }
+  return INT_MIN;
+}
+
 /// Парсит строку ICS datetime в time_point
 std::chrono::time_point<std::chrono::system_clock> parse_ics_datetime(const datetime_info& info) {
 
@@ -172,14 +291,18 @@ std::chrono::time_point<std::chrono::system_clock> parse_ics_datetime(const date
 
   tm.tm_isdst = -1;  // не определяем автоматически
 
-  // Используем timegm если есть timezone, иначе mktime
+  // Преобразуем локальное «стенное» время в абсолютный момент (UTC).
+  // Для известных TZID учитываем смещение от UTC, иначе полагаемся на
+  // системный часовой пояс (актуально для Europe/Moscow по умолчанию).
   time_t t;
-  if (!info.timezone.empty() || info.is_utc) {
-    // Для UTC используем timegm
-    if (info.is_utc) {
-      t = _mkgmtime(&tm);
+  if (info.is_utc) {
+    t = _mkgmtime(&tm);
+  } else if (!info.timezone.empty() && !info.is_date) {
+    int off = utc_offset_hours(info.timezone);
+    if (off != INT_MIN) {
+      time_t wall = _mkgmtime(&tm);
+      t = wall - static_cast<time_t>(off) * 3600;
     } else {
-      // Для timezone используем mktime (предполагаем локальный TZ)
       t = mktime(&tm);
     }
   } else {
@@ -368,46 +491,34 @@ void expand_recurrence(const scheduled_event& base_ev,
     // Вычисляем длительность события
     auto duration = base_ev.end - base_ev.start;
 
-    // Генерируем события, начиная от now и до deadline
-    // Находим ближайший день 'day' от now
-    auto now_t = std::chrono::system_clock::to_time_t(now);
-    struct tm now_tm;
-    localtime_s(&now_tm, &now_t);
+    // Опорная точка серии — дата DTSTART события. Повторения следуют от неё
+    // каждые INTERVAL недель, поэтому «не та» неделя (например, выпадающая из
+    // двухнедельной серии пятница) не генерируется.
+    time_t base_t = std::chrono::system_clock::to_time_t(base_ev.start);
+    struct tm base_tm;
+    localtime_s(&base_tm, &base_t);
+    int base_dow = base_tm.tm_wday;
+    if (base_dow == 0)
+      base_dow = 7;
 
-    for (long long week_offset = 0; week_offset <= 4; ++week_offset) {  // максимум 4 недели от текущего момента
+    // Перебираем недели серии. week_anchor — самый ранний возможный момент
+    // в данной неделе (days_ahead >= 0), поэтому если он уже за дедлайном,
+    // дальше искать нечего. Внутри недели каждый день проверяется отдельно,
+    // чтобы не терять дни из окна, идущие в byday позже первого.
+    for (long long week = 0; week < 520; ++week) {  // до 10 лет серии
+      auto week_anchor = base_ev.start + std::chrono::hours(24) * (week * 7LL * rrule.interval);
+      if (week_anchor > deadline)
+        break;
+
       for (int day: mutable_rrule.byday) {
-        // Находим дату дня 'day' в неделе week_offset от now
-        int current_dow = now_tm.tm_wday;
-        if (current_dow == 0)
-          current_dow = 7;
+        // Первое вхождение дня 'day' начиная с DTSTART
+        int days_ahead = (day - base_dow + 7) % 7;
+        long long day_offset = days_ahead + week * 7LL * rrule.interval;
 
-        // Вычисляем разницу в днях до целевого дня
-        int diff = day - current_dow;
-        if (diff < 0)
-          diff += 7;
-
-        // Создаём time_t для целевой даты
-        time_t target_t = now_t + static_cast<long long>(week_offset) * 7 * 86400 + diff * 86400;
-        struct tm target_tm;
-        localtime_s(&target_tm, &target_t);
-
-        // Устанавливаем время из base_ev (часы, минуты, секунды)
-        auto base_t = std::chrono::system_clock::to_time_t(base_ev.start);
-        struct tm base_tm;
-        localtime_s(&base_tm, &base_t);
-        target_tm.tm_hour = base_tm.tm_hour;
-        target_tm.tm_min = base_tm.tm_min;
-        target_tm.tm_sec = base_tm.tm_sec;
-        target_tm.tm_isdst = -1;
-
-        time_t instance_t = mktime(&target_tm);
-        if (instance_t == -1)
-          continue;
-
-        auto instance_start = std::chrono::system_clock::from_time_t(instance_t);
+        auto instance_start = base_ev.start + std::chrono::hours(24) * day_offset;
         auto instance_end = instance_start + duration;
 
-        // Проверяем, что событие не в прошлом
+        // Проверяем нижнюю границу окна (начало текущего дня)
         if (instance_start < now)
           continue;
 
@@ -419,9 +530,12 @@ void expand_recurrence(const scheduled_event& base_ev,
         if (rrule.until.time_since_epoch().count() != 0 && instance_start > rrule.until)
           continue;
 
-        // Формируем строку для проверки EXDATE
+        // Формируем строку для проверки EXDATE (локальное время)
+        auto it = std::chrono::system_clock::to_time_t(instance_start);
+        struct tm itm;
+        localtime_s(&itm, &it);
         char date_str[16];
-        strftime(date_str, sizeof(date_str), "%Y%m%dT%H%M%S", &target_tm);
+        strftime(date_str, sizeof(date_str), "%Y%m%dT%H%M%S", &itm);
         std::string date_str_std(date_str);
 
         // Проверяем EXDATE
@@ -594,6 +708,16 @@ std::tuple<std::string, std::string, std::string> split_ics_line(const std::stri
   return {to_upper(key), params, value};
 }
 
+/// Сырое событие до раскрытия повторений и применения RECURRENCE-ID-оверрайдов.
+struct raw_event {
+  scheduled_event ev;
+  rrule_data rrule;
+  bool has_rrule = false;
+  std::set<std::string> exdates;  // локальные даты/время "%Y%m%dT%H%M%S"
+  bool has_recurrence_id = false;
+  std::string recurrence_id;      // локальная дата/время исходного вхождения
+};
+
 }  // namespace
 
 // ===================== API =====================
@@ -619,34 +743,34 @@ std::vector<scheduled_event> fetch_events(const std::string& url) {
 }
 
 std::vector<scheduled_event> parse_calendar(const std::string& ics_content) {
-  std::vector<scheduled_event> result;
+  // Сначала собираем сырые VEVENT, затем раскрываем повторения с учётом
+  // RECURRENCE-ID-оверрайдов (перенесённые/отменённые вхождения).
+  std::vector<raw_event> raws;
+  collect_tzid_offsets(ics_content);
 
-  // 1. Развертываем линии
-  std::string unfolded;
+  // Разворачиваем long lines (RFC 5545 line folding) за один проход.
+  // Строка, начинающаяся с пробела/таба — продолжение предыдущей логической
+  // строки; обычная строка — новая логическая строка.
+  std::string lines;
   std::istringstream stream(ics_content);
   std::string line;
   while (std::getline(stream, line)) {
-    // Убираем \r
-    if (!line.empty() && line.back() == '\r') {
+    if (!line.empty() && line.back() == '\r')
       line.pop_back();
-    }
-    unfolded += line + "\n";
-  }
-
-  // 2. Развертываем long lines (RFC 5545 line folding)
-  std::string lines;
-  std::istringstream unfold_stream(unfolded);
-  std::string u_line;
-  while (std::getline(unfold_stream, u_line)) {
-    if (u_line.empty()) {
+    if (line.empty()) {
       lines += "\n";
       continue;
     }
-    if ((!lines.empty() && lines.back() == '\n') && (u_line[0] == ' ' || u_line[0] == '\t')) {
-      // Продолжение предыдущей строки
-      lines += u_line.substr(1);
+    if (line[0] == ' ' || line[0] == '\t') {
+      // Продолжение предыдущей строки: убираем перевод строки и ведущий пробел.
+      if (!lines.empty() && lines.back() == '\n')
+        lines.pop_back();
+      lines += line.substr(1);
     } else {
-      lines += u_line + "\n";
+      // Новая логическая строка.
+      if (!lines.empty() && lines.back() != '\n')
+        lines += '\n';
+      lines += line + "\n";
     }
   }
 
@@ -660,8 +784,7 @@ std::vector<scheduled_event> parse_calendar(const std::string& ics_content) {
 
   auto process_event = [&]() {
     scheduled_event ev;
-    std::set<std::string> event_exdates;
-    bool has_rrule = false;
+    raw_event re;
 
     for (const auto& l: event_lines) {
       auto trimmed = trim(l);
@@ -673,7 +796,7 @@ std::vector<scheduled_event> parse_calendar(const std::string& ics_content) {
         continue;
 
       if (key == "SUMMARY") {
-        ev.summary = unescape(value);
+        ev.summary = trim(unescape(value));
       } else if (key == "DESCRIPTION") {
         ev.description = unescape(value);
       } else if (key == "UID") {
@@ -746,29 +869,30 @@ std::vector<scheduled_event> parse_calendar(const std::string& ics_content) {
           ev.organizer_name = unescape(params.substr(cn_start, cn_end - cn_start));
         }
       } else if (key == "RRULE") {
-        // Пропускаем события с повторяющимся правилом — они не должны генерироваться
-        // из DTSTART, так как это может привести к созданию событий, которых нет
-        // в реальном календаре (старые события, отменённые события и т.д.)
-        has_rrule = true;
+        re.rrule = parse_rrule_data(value);
+        re.has_rrule = true;
+      } else if (key == "RECURRENCE-ID") {
+        re.has_recurrence_id = true;
+        // Локальная дата/время исходного вхождения (после последнего ':').
+        auto colon_pos = value.rfind(':');
+        re.recurrence_id = colon_pos == std::string::npos ? value : value.substr(colon_pos + 1);
       } else if (key == "EXDATE") {
-        // EXDATE;TZID=Europe/Moscow:20240525T140000
-        // Извлекаем дату из EXDATE для проверки
-        auto exdate_pos = value.find(':');
-        if (exdate_pos != std::string::npos) {
-          event_exdates.insert(value.substr(exdate_pos + 1));
+        // Может быть несколько значений через запятую: A,B,C
+        std::istringstream exs(value);
+        std::string part;
+        while (std::getline(exs, part, ',')) {
+          std::string p = trim(part);
+          if (!p.empty()) {
+            re.exdates.insert(p);
+            ev.exdates.insert(p);
+          }
         }
-        ev.exdates.insert(value);
       }
     }
 
-    // Если events не имеют статуса CANCELED и не имеют RRULE, добавляем
-    auto now = std::chrono::system_clock::now();
-    auto deadline = now + std::chrono::hours(48);
-    if (ev.status != common::event_status::CANCELED && ev.uid.empty() == false && !has_rrule) {
-      if (ev.start.time_since_epoch().count() != 0 && ev.start >= now && ev.start <= deadline) {
-        result.push_back(std::move(ev));
-      }
-    }
+    re.ev = std::move(ev);
+    if (!re.ev.uid.empty())
+      raws.push_back(std::move(re));
   };
 
   while (std::getline(final_stream, fl)) {
@@ -791,10 +915,6 @@ std::vector<scheduled_event> parse_calendar(const std::string& ics_content) {
       continue;
     } else if (trimmed == "END:VALARM") {
       in_alarm = false;
-      // Добавляем alarm к последнему событию
-      if (!result.empty() && !alarm_lines.empty()) {
-        parse_alarm(alarm_lines, result.back());
-      }
       continue;
     }
 
@@ -805,26 +925,88 @@ std::vector<scheduled_event> parse_calendar(const std::string& ics_content) {
     }
   }
 
-  // 4. Фильтруем события на ближайшие 48 часов
+  // 4. Окно: от начала сегодняшнего дня до now+48ч (включая уже начавшиеся сегодня).
   auto now = std::chrono::system_clock::now();
   auto deadline = now + std::chrono::hours(48);
 
-  std::vector<scheduled_event> filtered;
-  for (auto& ev: result) {
-    // Событие попадает в диапазон, если его начало <= дедлайна
-    // и (начало >= сейчас ИЛИ начало <= дедлайн)
-    // Показываем события, которые начинаются в пределах 48 часов
-    if (ev.start <= deadline) {
-      filtered.push_back(std::move(ev));
+  time_t now_t = std::chrono::system_clock::to_time_t(now);
+  struct tm now_tm;
+  localtime_s(&now_tm, &now_t);
+  now_tm.tm_hour = 0;
+  now_tm.tm_min = 0;
+  now_tm.tm_sec = 0;
+  time_t day_start_t = mktime(&now_tm);
+  auto window_start = day_start_t == -1 ? now : std::chrono::system_clock::from_time_t(day_start_t);
+
+  // Индекс RECURRENCE-ID-оверрайдов по UID.
+  std::map<std::string, std::vector<const raw_event*>> overrides_by_uid;
+  for (const auto& r: raws) {
+    if (r.has_recurrence_id)
+      overrides_by_uid[r.ev.uid].push_back(&r);
+  }
+
+  std::vector<scheduled_event> result;
+  for (const auto& r: raws) {
+    if (r.has_recurrence_id)
+      continue;  // оверрайды добавляются отдельно ниже
+    if (r.ev.status == common::event_status::CANCELED)
+      continue;
+
+    if (r.has_rrule) {
+      scheduled_event base = r.ev;
+      switch (r.rrule.freq) {
+      case rrule_data::freq_t::DAILY: base.repeat = scheduled_event::repeat_t::DAILY; break;
+      case rrule_data::freq_t::WEEKLY: base.repeat = scheduled_event::repeat_t::WEEKLY; break;
+      case rrule_data::freq_t::MONTHLY: base.repeat = scheduled_event::repeat_t::MONTHLY; break;
+      case rrule_data::freq_t::YEARLY: base.repeat = scheduled_event::repeat_t::YEARLY; break;
+      }
+      base.recurrence_interval = r.rrule.interval;
+      for (int d: r.rrule.byday) {
+        base.byday_mask = static_cast<scheduled_event::day_periodic>(base.byday_mask | (1 << (d - 1)));
+      }
+      if (r.rrule.until.time_since_epoch().count() != 0) {
+        base.recurrence_end = r.rrule.until;
+      }
+
+      std::vector<scheduled_event> instances;
+      expand_recurrence(base, r.rrule, window_start, deadline, r.exdates, instances);
+      for (auto& inst: instances) {
+        // Если на это вхождение есть оверрайд — пропускаем (добавится ниже).
+        std::string key = fmt_local_dt(inst.start);
+        bool overridden = false;
+        auto it = overrides_by_uid.find(r.ev.uid);
+        if (it != overrides_by_uid.end()) {
+          for (const auto* ov: it->second) {
+            if (ov->recurrence_id == key) {
+              overridden = true;
+              break;
+            }
+          }
+        }
+        if (overridden)
+          continue;
+        result.push_back(std::move(inst));
+      }
+    } else if (r.ev.start.time_since_epoch().count() != 0 && r.ev.start >= window_start && r.ev.start <= deadline) {
+      result.push_back(r.ev);
     }
   }
 
-  // 5. Сортируем по времени начала
-  std::sort(filtered.begin(), filtered.end(), [](const scheduled_event& a, const scheduled_event& b) {
+  // 5. Добавляем неотменённые оверрайды как самостоятельные события.
+  for (const auto& r: raws) {
+    if (!r.has_recurrence_id || r.ev.status == common::event_status::CANCELED)
+      continue;
+    if (r.ev.start.time_since_epoch().count() != 0 && r.ev.start >= window_start && r.ev.start <= deadline) {
+      result.push_back(r.ev);
+    }
+  }
+
+  // 6. Сортируем по времени начала.
+  std::sort(result.begin(), result.end(), [](const scheduled_event& a, const scheduled_event& b) {
     return a.start < b.start;
   });
 
-  return filtered;
+  return result;
 }
 
 }  // namespace divoomdev::ics

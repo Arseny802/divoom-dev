@@ -1,5 +1,6 @@
 #include "ics/event_manager.h"
 #include "ics/parser.h"
+#include <ctime>
 
 namespace divoomdev::ics {
 
@@ -26,13 +27,23 @@ common::event_list event_manager::get_next_48h_events() {
 
   hlog()->info("[ICS]: Total events in cache: {}", events_.size());
 
-  // Фильтруем на 48 часов
+  // Фильтруем на 48 часов. Нижняя граница — начало текущего дня (локально),
+  // чтобы не терять события, которые уже начались сегодня (см. обработку RRULE).
   auto now = std::chrono::system_clock::now();
   auto deadline = now + std::chrono::hours(48);
 
+  time_t now_t = std::chrono::system_clock::to_time_t(now);
+  struct tm now_tm;
+  localtime_s(&now_tm, &now_t);
+  now_tm.tm_hour = 0;
+  now_tm.tm_min = 0;
+  now_tm.tm_sec = 0;
+  time_t day_start_t = mktime(&now_tm);
+  auto window_start = day_start_t == -1 ? now : std::chrono::system_clock::from_time_t(day_start_t);
+
   scheduled_event_list filtered;
   for (auto& ev: events_) {
-    if (ev.start <= deadline && ev.start >= now) {
+    if (ev.start <= deadline && ev.start >= window_start) {
       filtered.push_back(std::move(ev));
     }
   }

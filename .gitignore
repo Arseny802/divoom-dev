@@ -9,7 +9,9 @@ compile_commands.json
 config.json
 
 # AI files
+.codeassistant
 .gigacode
+.koda
 
 # Prerequisites
 *.d
