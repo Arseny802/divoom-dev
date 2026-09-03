@@ -1,6 +1,6 @@
 #include "device_clockes.h"
 
-namespace divoomdev::divoom::handlers {
+namespace divoomdev::divoom::handlers::clock {
 namespace {
 common::clock parse_device_object(const nlohmann::json& j) {
   common::clock clock;
@@ -13,20 +13,16 @@ common::clock parse_device_object(const nlohmann::json& j) {
 }
 }  // namespace
 
-// C:\Users\a.ravin>curl -XPOST https://appin.divoom-gz.com/Channel/MyClockGetList -H "accept: application/json" -H
-// "Content-Type: application/json" -d "{\"DeviceId\": 300417773, \"StartNum\": 1,\"EndNum\": 100, \"DeviceType\":
-// \"Frame\"}"
-
-device_clockes::device_clockes(device_clockes_request request): handler(RequestType::POST) {
+get_list::get_list(get_list_request request): handler(RequestType::POST) {
   request_ = std::move(request);
 }
-device_clockes::~device_clockes() = default;
+get_list::~get_list() = default;
 
-std::string device_clockes::get_path(const std::string_view host) const noexcept {
+std::string get_list::get_path(const std::string_view host) const noexcept {
   return format("https://{}:443/Channel/MyClockGetList", host);
 }
 
-bool device_clockes::handle(const std::string& json_str) {
+bool get_list::handle(const std::string& json_str) {
   result_ = std::nullopt;
   auto json = parse_json(json_str);
 
@@ -41,4 +37,4 @@ bool device_clockes::handle(const std::string& json_str) {
 
   return true;
 }
-}  // namespace divoomdev::divoom::handlers
+}  // namespace divoomdev::divoom::handlers::clock

@@ -4,14 +4,11 @@ namespace divoomdev::divoom::handlers {
 namespace {
 common::device parse_device_object(const nlohmann::json& j) {
   common::device dev;
-
-  // Преобразование camelCase ключей JSON в поля структуры
   dev.name = j.value("DeviceName", std::string(""));
   dev.id = j.value("DeviceId", 0);
   dev.private_ip = j.value("DevicePrivateIP", std::string(""));
   dev.mac = j.value("DeviceMac", std::string(""));
   dev.hardware = j.value("Hardware", 0);
-
   return dev;
 }
 }  // namespace

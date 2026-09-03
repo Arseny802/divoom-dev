@@ -19,28 +19,14 @@ struct handler {
   using RequestDataType = RequestDataT;
   using ResultType = ResponseT;
 
-  handler(RequestType type): request_type(type) { }
-  virtual ~handler() = default;
+  handler(RequestType type);
+  virtual ~handler();
 
-  std::string get_request() {
-    if constexpr (std::is_same<decltype(request_), nullptr_t>::value) {
-      return {};
-    }
-    return nlohmann::json(request_).dump();
-  }
-
-  ResponseT get_result() {
-    if (!result_) {
-      throw std::runtime_error("No result available");
-    }
-    ResponseT temp = *result_;
-    result_ = std::nullopt;
-    return temp;
-  };
+  std::string get_request();
+  ResponseT get_result();
 
   virtual std::string get_path(const std::string_view host) const noexcept = 0;
-  virtual void set_request() { };
-  virtual bool handle(const std::string&) = 0;
+  virtual bool handle(const std::string& data);
 
   const RequestType request_type = RequestType::GET;
 
@@ -50,6 +36,35 @@ struct handler {
   std::optional<ResponseT> result_;
   RequestDataT request_;
 };
+
+template<typename T1, typename T2>
+handler<T1, T2>::handler(RequestType type): request_type(type) { }
+
+template<typename T1, typename T2>
+handler<T1, T2>::~handler() = default;
+
+template<typename T1, typename T2>
+std::string handler<T1, T2>::get_request() {
+  if constexpr (std::is_same<decltype(request_), nullptr_t>::value) {
+    return {};
+  }
+  return nlohmann::json(request_).dump();
+}
+
+template<typename T1, typename T2>
+handler<T1, T2>::ResultType handler<T1, T2>::get_result() {
+  if (!result_) {
+    throw std::runtime_error("No result available");
+  }
+  ResultType temp = *result_;
+  result_ = std::nullopt;
+  return temp;
+};
+
+template<typename T1, typename T2>
+bool handler<T1, T2>::handle(const std::string& data) {
+  return parse_json(data).get();
+}
 
 template<typename T1, typename T2>
 std::unique_ptr<nlohmann::json> handler<T1, T2>::parse_json(const std::string& data) {

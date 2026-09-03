@@ -4,6 +4,7 @@ boost/1.83.0          # Needed for service, cpr in some rpofiles
 cpr/1.14.2            # CURL reqiests simlified
 nlohmann_json/3.11.3  # Needed for external API communication
 libcurl/8.9.1         # Needed for tgbot, cpr in some rpofiles (?)
+mbedtls/3.6.7         # MD5 hash calculation for password
 fmt/10.0.0            # Needed for hare lib
 spdlog/1.11.0         # Needed for hare lib
 gtest/1.13.0          # Needed for testing all
