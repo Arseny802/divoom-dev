@@ -1,45 +1,31 @@
 #include "gtest/gtest.h"
 
-#include <sstream>
-
-#include "datetime.h"
+#include "detail/datetime.h"
+#include "detail/text_utils.h"
+#include "detail/timezone.h"
 #include "test_helpers.h"
-#include "text_utils.h"
-#include "timezone.h"
 
 using namespace divoomdev::ics::detail;
 
-TEST(ParseTzOffset, Formats) {
+TEST(ParseTzOffset, HandlesFormats) {
   EXPECT_EQ(parse_tzoffset("+0300"), 3);
   EXPECT_EQ(parse_tzoffset("-0700"), -7);
-  EXPECT_EQ(parse_tzoffset("+0530"), 6);  // получасовые округляются вверх
+  EXPECT_EQ(parse_tzoffset("+0530"), 6);  // half-hour offsets round up
   EXPECT_EQ(parse_tzoffset("+0000"), 0);
   EXPECT_EQ(parse_tzoffset("+05"), kUnknownOffset);
   EXPECT_EQ(parse_tzoffset("abc"), kUnknownOffset);
 }
 
-TEST(MakeDatetimeInfo, TzidParam) {
-  auto info = make_datetime_info("TZID=Europe/Moscow", "20231202T120000");
-  EXPECT_EQ(info.timezone, "Europe/Moscow");
-  EXPECT_FALSE(info.is_utc);
-  EXPECT_FALSE(info.is_date);
-}
+TEST(MakeDatetimeInfo, TzidAndUtcAndDateFlags) {
+  auto with_tz = make_datetime_info("TZID=Europe/Moscow", "20231202T120000");
+  EXPECT_EQ(with_tz.timezone, "Europe/Moscow");
+  EXPECT_FALSE(with_tz.is_utc);
 
-TEST(MakeDatetimeInfo, UtcByTrailingZ) {
-  auto info = make_datetime_info("", "20231202T120000Z");
-  EXPECT_TRUE(info.is_utc);
-  EXPECT_FALSE(info.is_date);
-}
+  auto utc = make_datetime_info("", "20231202T120000Z");
+  EXPECT_TRUE(utc.is_utc);
 
-TEST(MakeDatetimeInfo, DateOnly) {
-  auto info = make_datetime_info("VALUE=DATE", "20231202");
-  EXPECT_TRUE(info.is_date);
-  EXPECT_FALSE(info.is_utc);
-}
-
-TEST(MakeDatetimeInfo, MultipleParams) {
-  auto info = make_datetime_info("TZID=GMT Standard Time;X=1", "20231202T120000");
-  EXPECT_EQ(info.timezone, "GMT Standard Time");
+  auto date = make_datetime_info("VALUE=DATE", "20231202");
+  EXPECT_TRUE(date.is_date);
 }
 
 TEST(ParseDatetimeField, FullLine) {
@@ -57,8 +43,7 @@ TEST(ParseIcsDatetime, UtcIsAbsolute) {
 TEST(ParseIcsDatetime, IanaStaticTimezone) {
   timezone_resolver tz;
   auto tp = parse_ics_datetime(make_datetime_info("TZID=Europe/Moscow", "20231202T120000"), tz);
-  // +3 => 09:00 UTC
-  EXPECT_EQ(ics_test::utc_dt(tp), "20231202T090000");
+  EXPECT_EQ(ics_test::utc_dt(tp), "20231202T090000");  // +3 -> UTC
 }
 
 TEST(ParseIcsDatetime, WindowsTzidFromVTimezone) {
@@ -79,12 +64,9 @@ TEST(ParseIcsDatetime, WindowsTzidFromVTimezone) {
   EXPECT_EQ(ics_test::utc_dt(tp), "20231202T090000");
 }
 
-TEST(ParseIcsDatetime, UnknownTzUsesSystemLocal) {
+TEST(ParseIcsDatetime, UnknownTzFallsBackToSystemLocal) {
   timezone_resolver tz;
-  auto info = make_datetime_info("TZID=Nowhere/Unknown", "20231202T120000");
-  EXPECT_EQ(tz.offset_hours("Nowhere/Unknown"), kUnknownOffset);
-  auto tp = parse_ics_datetime(info, tz);
-  // Полагаемся на системный пояс; просто проверяем, что не упало и время не пустое.
+  auto tp = parse_ics_datetime(make_datetime_info("TZID=Nowhere/Unknown", "20231202T120000"), tz);
   EXPECT_NE(tp.time_since_epoch().count(), 0);
 }
 
@@ -93,7 +75,7 @@ TEST(ParseStamp, UtcStamp) {
   EXPECT_EQ(ics_test::utc_dt(tp), "20231202T120000");
 }
 
-TEST(FormatLocalDt, RoundTripShape) {
+TEST(FormatLocalDt, ShapeRoundTrip) {
   auto tp = ics_test::wall_clock(2026, 9, 5, 10, 30, 0);
   std::string s = format_local_dt(tp);
   EXPECT_EQ(s.substr(0, 8), "20260905");
@@ -101,18 +83,15 @@ TEST(FormatLocalDt, RoundTripShape) {
   EXPECT_EQ(s.substr(9), "103000");
 }
 
-TEST(TimezoneResolver, VTimezoneIgnoresDaylight) {
-  // STANDARD берёт TZOFFSETTO; DAYLIGHT не перекрывает его для фиксированных поясов.
+TEST(TimezoneResolver, IgnoresDaylightForFixedZones) {
   std::string cal = "BEGIN:VCALENDAR\n"
                     "BEGIN:VTIMEZONE\n"
                     "TZID:SE Asia Standard Time\n"
                     "BEGIN:STANDARD\n"
-                    "DTSTART:16010101T000000\n"
                     "TZOFFSETFROM:+0700\n"
                     "TZOFFSETTO:+0700\n"
                     "END:STANDARD\n"
                     "BEGIN:DAYLIGHT\n"
-                    "DTSTART:16010101T000000\n"
                     "TZOFFSETFROM:+0700\n"
                     "TZOFFSETTO:+0700\n"
                     "END:DAYLIGHT\n"

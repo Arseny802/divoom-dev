@@ -1,9 +1,8 @@
-#include "calendar_parser.h"
+#include "pipeline.h"
 
 #include <algorithm>
 #include <sstream>
 
-#include "cpr/cpr.h"
 #include "datetime.h"
 #include "event_builder.h"
 #include "override_applier.h"
@@ -13,13 +12,11 @@
 #include "timezone.h"
 #include "window.h"
 
-#include "ics/parser.h"
-
 namespace divoomdev::ics::detail {
 
 namespace {
 
-/// Сканирует unfold'нутый контент и собирает сырые события через event_builder.
+/// Scans unfolded content and collects raw events through the event_builder.
 std::vector<raw_event> collect_raw_events(const std::string& unfolded, const timezone_resolver& tz) {
   std::vector<raw_event> raws;
   event_builder builder(tz);
@@ -81,29 +78,30 @@ std::vector<raw_event> collect_raw_events(const std::string& unfolded, const tim
 
 }  // namespace
 
-std::vector<scheduled_event> parse_calendar_at(const std::string& ics_content,
-                                               std::chrono::time_point<std::chrono::system_clock> now) {
-  // 1. Собираем TZID-смещения из VTIMEZONE (для Outlook/Exchange Windows-имён поясов).
+scheduled_event_list parse_calendar_at(const std::string& ics_content,
+                                       std::chrono::time_point<std::chrono::system_clock> now,
+                                       const calendar_settings& settings) {
+  // 1. Collect TZID offsets from VTIMEZONE blocks (Outlook/Exchange Windows names).
   timezone_resolver tz;
   tz.collect_vtimezones(ics_content);
 
-  // 2. Разворачиваем long lines (RFC 5545 line folding) за один проход.
+  // 2. Unfold long lines (RFC 5545 line folding) in a single pass.
   std::string unfolded = unfold(ics_content);
 
-  // 3. Собираем сырые VEVENT.
+  // 3. Collect raw VEVENTs.
   std::vector<raw_event> raws = collect_raw_events(unfolded, tz);
 
-  // 4. Окно: от начала сегодняшнего дня до now+48ч.
-  time_window win = compute_window(now);
+  // 4. Build the selection window from the consumer's settings.
+  time_window win = compute_window(now, settings);
 
-  // 5. Индекс RECURRENCE-ID-оверрайдов по UID.
+  // 5. Index RECURRENCE-ID overrides by UID.
   auto overrides = override_applier::build_index(raws);
 
-  // 6. Раскрываем мастер-события (пропуская переопределённые вхождения).
+  // 6. Expand master events, skipping overridden occurrences.
   std::vector<scheduled_event> result;
   for (const auto& r: raws) {
     if (r.has_recurrence_id)
-      continue;  // оверрайды добавляются отдельно ниже
+      continue;  // overrides are added separately below
     if (r.ev.status == common::event_status::CANCELED)
       continue;
 
@@ -112,7 +110,8 @@ std::vector<scheduled_event> parse_calendar_at(const std::string& ics_content,
       apply_repeat_metadata(base, r.rrule);
 
       std::vector<scheduled_event> instances;
-      recurrence_expander::for_freq(r.rrule.freq).expand(base, r.rrule, win.start, win.deadline, r.exdates, instances);
+      recurrence_expander::for_freq(r.rrule.freq)
+          .expand(base, r.rrule, win.start, win.deadline, r.exdates, instances);
 
       for (auto& inst: instances) {
         if (override_applier::is_overridden(overrides, r.ev.uid, format_local_dt(inst.start)))
@@ -124,10 +123,10 @@ std::vector<scheduled_event> parse_calendar_at(const std::string& ics_content,
     }
   }
 
-  // 7. Добавляем неотменённые оверрайды как самостоятельные события.
+  // 7. Add non-cancelled overrides as standalone events.
   override_applier::add_in_window_overrides(overrides, raws, win, result);
 
-  // 8. Сортируем по времени начала.
+  // 8. Sort by start time.
   std::sort(result.begin(), result.end(), [](const scheduled_event& a, const scheduled_event& b) {
     return a.start < b.start;
   });
@@ -136,31 +135,3 @@ std::vector<scheduled_event> parse_calendar_at(const std::string& ics_content,
 }
 
 }  // namespace divoomdev::ics::detail
-
-namespace divoomdev::ics {
-
-std::vector<scheduled_event> parse_calendar(const std::string& ics_content) {
-  return detail::parse_calendar_at(ics_content, std::chrono::system_clock::now());
-}
-
-std::vector<scheduled_event> fetch_events(const std::string& url) {
-  cpr::Parameters parameters;
-  cpr::SslOptions ssl_options;
-  ssl_options.verify_host = false;
-  ssl_options.verify_peer = false;
-  cpr::Response response = cpr::Get(cpr::Url{url}, parameters, ssl_options);
-
-  hlog()->info("[ICS]: Fetched {}, status={}, size={}", url, response.status_code, response.text.size());
-
-  if (response.status_code != 200) {
-    hlog()->error(
-        "[ICS]: Failed fetching {} with code={}, error={}", url, response.status_code, response.error.message);
-    return {};
-  }
-
-  auto events = parse_calendar(response.text);
-  hlog()->info("[ICS]: Parsed {} events from calendar", events.size());
-  return events;
-}
-
-}  // namespace divoomdev::ics

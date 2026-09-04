@@ -1,16 +1,44 @@
 #include "gtest/gtest.h"
 
 #include <chrono>
+#include <map>
+#include <memory>
+#include <string>
 
 #include "common/event.h"
+#include "ics/cache.h"
 #include "ics/event_manager.h"
+#include "ics/settings.h"
+#include "ics/source.h"
 #include "test_helpers.h"
 
-namespace common = divoomdev::common;
+using namespace divoomdev::common;
 using namespace divoomdev::ics;
+using namespace ics_test;
 using namespace std::chrono;
 
 namespace {
+
+/// Fake calendar source: no real network, records how many times it is called.
+class mock_source final : public i_calendar_source {
+ public:
+  int fetch_count = 0;
+  std::map<std::string, std::string> contents;
+
+  std::string fetch(const std::string& url) override {
+    ++fetch_count;
+    auto it = contents.find(url);
+    return it == contents.end() ? std::string() : it->second;
+  }
+};
+
+/// Builds an ICS document with a single UTC event starting at `start`.
+std::string make_ics(const std::string& uid, const std::string& summary, time_point<system_clock> start) {
+  auto end = start + std::chrono::hours(1);
+  return "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:" + uid + "\nSUMMARY:" + summary + "\nDTSTART:" + utc_dt(start) +
+         "Z\nDTEND:" + utc_dt(end) + "Z\nSTATUS:CONFIRMED\nEND:VEVENT\nEND:VCALENDAR\n";
+}
+
 scheduled_event mk(const std::string& uid, const std::string& summary, time_point<system_clock> start) {
   scheduled_event ev;
   ev.uid = uid;
@@ -19,46 +47,69 @@ scheduled_event mk(const std::string& uid, const std::string& summary, time_poin
   ev.end = start + std::chrono::minutes(30);
   return ev;
 }
+
 }  // namespace
 
-TEST(EventManager, AddEventAndGetNext48hScheduledFiltersByDeadline) {
-  event_manager mgr;
+TEST(EventManager, LoadsFromMockSourceAndCaches) {
+  auto source = std::make_shared<mock_source>();
+  auto cache = std::make_shared<ics_cache>(std::chrono::minutes(5));
   auto now = system_clock::now();
+  source->contents["http://a/cal.ics"] = make_ics("e1", "Cached Event", now + std::chrono::hours(1));
 
-  mgr.add_event(mk("e1", "прошлое", now - hours(1)));
-  mgr.add_event(mk("e2", "скоро", now + hours(1)));
-  mgr.add_event(mk("e3", "далеко", now + hours(100)));
+  event_manager mgr(source, cache);
+  mgr.add_calendar_url("http://a/cal.ics");
 
-  auto out = mgr.get_next_48h_scheduled();
-  // get_next_48h_scheduled фильтрует только по верхней границе (deadline).
-  ASSERT_EQ(out.size(), 2u);
-  EXPECT_EQ(out[0].uid, "e1");
-  EXPECT_EQ(out[1].uid, "e2");
-  EXPECT_TRUE(std::is_sorted(
-      out.begin(), out.end(), [](const scheduled_event& a, const scheduled_event& b) { return a.start < b.start; }));
+  auto first = mgr.get_next_events();
+  ASSERT_EQ(first.size(), 1u);
+  EXPECT_EQ(first[0].summary, "Cached Event");
+  EXPECT_EQ(source->fetch_count, 1);
+
+  auto second = mgr.get_next_events();
+  ASSERT_EQ(second.size(), 1u);
+  EXPECT_EQ(source->fetch_count, 1);  // served from cache, no extra round-trip
 }
 
-TEST(EventManager, GetNext48hEventsAppliesLowerBoundStartOfDay) {
-  event_manager mgr;
+TEST(EventManager, UsesManualEventsWithoutSourceFetch) {
+  auto source = std::make_shared<mock_source>();
+  event_manager mgr(source, nullptr);
   auto now = system_clock::now();
 
-  mgr.add_event(mk("past", "давно начатое", now - hours(50)));  // раньше начала сегодняшнего дня
-  mgr.add_event(mk("inside", "внутри окна", now + hours(1)));
-  mgr.add_event(mk("far", "за пределами", now + hours(100)));   // за 48ч
+  mgr.add_event(mk("past", "Earlier", now - std::chrono::hours(1)));
+  mgr.add_event(mk("soon", "Soon", now + std::chrono::hours(1)));
+  mgr.add_event(mk("far", "Far", now + std::chrono::hours(100)));
 
-  common::event_list out = mgr.get_next_48h_events();
+  auto out = mgr.get_next_48h_scheduled();
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_EQ(out[0].uid, "past");
+  EXPECT_EQ(out[1].uid, "soon");
+  EXPECT_EQ(source->fetch_count, 0);
+}
+
+TEST(EventManager, ConfigurableHorizonViaSettings) {
+  auto source = std::make_shared<mock_source>();
+  auto now = system_clock::now();
+  source->contents["u1"] = make_ics("h1", "Nearby", now + std::chrono::hours(2));
+
+  calendar_settings settings;
+  settings.horizon = std::chrono::hours(1);
+  event_manager mgr(source, nullptr, settings);
+  mgr.add_calendar_url("u1");
+
+  EXPECT_TRUE(mgr.get_next_events().empty());
+}
+
+TEST(EventManager, FailedSourceYieldsNoEvents) {
+  auto source = std::make_shared<mock_source>();
+  event_manager mgr(source);
+  mgr.add_calendar_url("http://missing/cal.ics");
+  EXPECT_TRUE(mgr.get_next_events().empty());
+}
+
+TEST(EventManager, DefaultConstructorUsesHttpSource) {
+  event_manager mgr;
+  auto now = system_clock::now();
+  mgr.add_event(mk("manual", "Manual Event", now + std::chrono::hours(1)));
+  auto out = mgr.get_next_48h_scheduled();
   ASSERT_EQ(out.size(), 1u);
-  EXPECT_EQ(out[0].uid, "inside");
-}
-
-TEST(EventManager, AddCalendarUrlThenAddEventNoFetchNeeded) {
-  event_manager mgr;
-  auto now = system_clock::now();
-  mgr.add_event(mk("a", "A", now + minutes(5)));
-  mgr.add_event(mk("b", "B", now + minutes(3)));
-  // Без добавленных URL fetch не выполняется, события берутся из кэша.
-  auto out = mgr.get_next_48h_scheduled();
-  ASSERT_EQ(out.size(), 2u);
-  EXPECT_EQ(out[0].uid, "b");
-  EXPECT_EQ(out[1].uid, "a");
+  EXPECT_EQ(out[0].uid, "manual");
 }

@@ -8,7 +8,7 @@
 
 namespace ics_test {
 
-/// Читает файл относительно директории с исходниками тестов (каталог tests/).
+/// Reads a file located under the tests source directory.
 inline std::string read_file(const std::string& rel_path) {
   std::filesystem::path base = std::filesystem::path(__FILE__).parent_path();
   std::ifstream f(base / rel_path, std::ios::binary);
@@ -17,7 +17,12 @@ inline std::string read_file(const std::string& rel_path) {
   return ss.str();
 }
 
-/// Форматирует момент в локальное время "%Y-%m-%d %H:%M:%S".
+/// Returns the raw content of a fixture file under fixtures/.
+inline std::string fixture(const std::string& name) {
+  return read_file("fixtures/" + name);
+}
+
+/// Formats a time point in local time as "%Y-%m-%d %H:%M:%S".
 inline std::string fmt_dt(std::chrono::time_point<std::chrono::system_clock> tp) {
   auto t = std::chrono::system_clock::to_time_t(tp);
   struct tm tm;
@@ -27,7 +32,7 @@ inline std::string fmt_dt(std::chrono::time_point<std::chrono::system_clock> tp)
   return std::string(buf);
 }
 
-/// Форматирует момент в UTC "%Y%m%dT%H%M%S" (для проверки абсолютного времени).
+/// Formats a time point in UTC as "%Y%m%dT%H%M%S" (for absolute-time checks).
 inline std::string utc_dt(std::chrono::time_point<std::chrono::system_clock> tp) {
   auto t = std::chrono::system_clock::to_time_t(tp);
   struct tm tm;
@@ -37,7 +42,7 @@ inline std::string utc_dt(std::chrono::time_point<std::chrono::system_clock> tp)
   return std::string(buf);
 }
 
-/// Строит абсолютный момент из «стенного» локального времени.
+/// Builds an absolute moment from wall-clock local time.
 inline std::chrono::time_point<std::chrono::system_clock> wall_clock(int y, int mo, int d, int h, int mi, int s) {
   struct tm tm = {};
   tm.tm_year = y - 1900;
