@@ -6,6 +6,7 @@ __pycache__
 CMakeUserPresets.json
 compile_commands.json
 
+config.db
 config.json
 
 # AI files
