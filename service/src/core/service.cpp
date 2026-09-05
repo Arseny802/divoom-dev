@@ -1,6 +1,7 @@
 #include "service.h"
 #include "device_updater.h"
 #include "event_formatter.h"
+#include "lifecycle/service_state.h"
 
 #include "ics/event_manager.h"
 #include "storage/i_storage.h"
@@ -34,15 +35,37 @@ void service::run() {
     calendar_manager_->add_calendar_url(item.url);
   }
 
-  while (true) {
+  while (lifecycle::g_service_running() && !lifecycle::g_service_paused()) {
     try {
       process_cycle();
     } catch (const std::exception& e) {
       log()->error("Error in service loop: {}", e.what());
     }
 
-    std::this_thread::sleep_for(update_interval_);
+    // Ждём с проверкой состояния паузы и остановки (каждые 100 мс)
+    const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(update_interval_).count();
+    for (auto i = 0ull; i < total_ms / 100 && lifecycle::g_service_running() && !lifecycle::g_service_paused(); ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
+
+  if (lifecycle::g_service_paused()) {
+    log()->info("Service loop paused");
+  } else {
+    log()->info("Service loop stopped");
+  }
+}
+
+void service::pause() {
+  lifecycle::g_service_paused() = true;
+}
+
+void service::resume() {
+  lifecycle::g_service_paused() = false;
+}
+
+void service::stop() {
+  lifecycle::g_service_running() = false;
 }
 
 void service::process_cycle() {

@@ -6,6 +6,7 @@
 #include "setup.h"
 #include "core/service.h"
 #include "lifecycle/manager.h"
+#include "lifecycle/service_state.h"
 #include "storage/storage.hpp"
 
 #include <aclapi.h>
@@ -23,19 +24,51 @@ namespace divoomdev::service::lifecycle {
 
 static SERVICE_STATUS g_service_status{};
 static SERVICE_STATUS_HANDLE g_service_status_handle = nullptr;
-static std::atomic<bool> g_service_running{true};
 static std::unique_ptr<core::service> g_service_core_ptr = nullptr;
 
 void WINAPI service_ctrl_handler(DWORD ctrl) {
+  SERVICE_STATUS status{};
+  status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+  status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN | SERVICE_ACCEPT_PAUSE_CONTINUE;
+
   switch (ctrl) {
   case SERVICE_CONTROL_STOP:
   case SERVICE_CONTROL_SHUTDOWN:
-    g_service_running = false;
-    g_service_status.dwCurrentState = SERVICE_STOP_PENDING;
-    SetServiceStatus(g_service_status_handle, &g_service_status);
+    g_service_paused() = false;
+    if (g_service_core_ptr) {
+      g_service_core_ptr->stop();
+    }
+    status.dwCurrentState = SERVICE_STOP_PENDING;
+    SetServiceStatus(g_service_status_handle, &status);
     log()->info("Service stopping...");
     break;
-  default: break;
+
+  case SERVICE_CONTROL_PAUSE:
+    g_service_paused() = true;
+    status.dwCurrentState = SERVICE_PAUSE_PENDING;
+    SetServiceStatus(g_service_status_handle, &status);
+    if (g_service_core_ptr) {
+      g_service_core_ptr->pause();
+    }
+    status.dwCurrentState = SERVICE_PAUSED;
+    SetServiceStatus(g_service_status_handle, &status);
+    log()->info("Service paused");
+    break;
+
+  case SERVICE_CONTROL_CONTINUE:
+    g_service_paused() = false;
+    status.dwCurrentState = SERVICE_CONTINUE_PENDING;
+    SetServiceStatus(g_service_status_handle, &status);
+    if (g_service_core_ptr) {
+      g_service_core_ptr->resume();
+    }
+    status.dwCurrentState = SERVICE_RUNNING;
+    SetServiceStatus(g_service_status_handle, &status);
+    log()->info("Service resumed");
+    break;
+
+  default:
+    break;
   }
 }
 
@@ -51,28 +84,37 @@ void WINAPI service_main(DWORD argc, LPWSTR* argv) {
   }
 
   g_service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-  g_service_status.dwCurrentState = SERVICE_RUNNING;
-  g_service_status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+  g_service_status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN | SERVICE_ACCEPT_PAUSE_CONTINUE;
+  g_service_status.dwCurrentState = SERVICE_START_PENDING;
   SetServiceStatus(g_service_status_handle, &g_service_status);
 
-  log()->info("Windows service started");
+  log()->info("Windows service starting...");
 
   // Запускаем рабочий цикл в отдельном потоке
-  std::thread worker([]() {
+  std::thread worker([=]() {
     if (g_service_core_ptr) {
+      g_service_status.dwCurrentState = SERVICE_RUNNING;
+      SetServiceStatus(g_service_status_handle, &g_service_status);
+      log()->info("Windows service started");
+
       g_service_core_ptr->run();
+
+      log()->info("Service core run() returned");
     }
   });
 
   // Ждём остановки
-  while (g_service_running) {
+  while (g_service_running()) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
+  log()->info("Waiting for worker thread to finish...");
   worker.join();
+  log()->info("Worker thread joined");
 
   g_service_status.dwCurrentState = SERVICE_STOPPED;
   SetServiceStatus(g_service_status_handle, &g_service_status);
+  log()->info("Windows service stopped");
 }
 
 std::unique_ptr<core::service> manager::create_service_core() {
