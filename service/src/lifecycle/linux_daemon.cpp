@@ -35,9 +35,18 @@ std::unique_ptr<core::service> manager::create_service_core() {
   return std::make_unique<core::service>(std::move(storage));
 }
 
-bool manager::is_running_infinity() {
+bool manager::is_running_as_service() {
   const char* pid = getenv("SYSTEMD_EXEC_PID");
   return pid != nullptr && pid[0] != '\0';
+}
+
+bool manager::check_admin_privileges() {
+  if (geteuid() != 0) {
+    log()->error(
+        "Insufficient privileges. Please run as root (use sudo).");
+    return false;
+  }
+  return true;
 }
 
 bool manager::auto_register_service() {

@@ -42,11 +42,15 @@ int manager::run(int argc, char* argv[]) {
   }
 
   log()->info("Running as service");
-  if (!is_running_infinity()) {
+  if (!is_running_as_service()) {
 
     log()->info("Not running as service, auto-registering...");
+    if (!check_admin_privileges()) {
+      log()->error("Cannot register service: insufficient privileges.");
+      return EXIT_FAILURE;
+    }
     if (!auto_register_service()) {
-      log()->error("Failed to auto-register service. Run as administrator.");
+      log()->error("Failed to auto-register service.");
       return EXIT_FAILURE;
     }
     log()->info("Service registered. Exiting.");

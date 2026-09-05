@@ -22,8 +22,9 @@ class manager {
   static void run_console(core::service* core);
 
   static std::unique_ptr<core::service> create_service_core();
-  static bool is_running_infinity();
+  static bool is_running_as_service();
   static bool auto_register_service();
+  static bool check_admin_privileges();
   static void run_service(std::unique_ptr<core::service>&& core);
 };
 

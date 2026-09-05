@@ -80,8 +80,21 @@ std::unique_ptr<core::service> manager::create_service_core() {
   return std::make_unique<core::service>(std::move(storage));
 }
 
-bool manager::is_running_infinity() {
+bool manager::is_running_as_service() {
   return !GetConsoleWindow();
+}
+
+bool manager::check_admin_privileges() {
+  SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE);
+  if (!scm) {
+    log()->error(
+        "OpenSCManager failed (error {}): insufficient privileges. "
+        "Please run as Administrator.",
+        GetLastError());
+    return false;
+  }
+  CloseServiceHandle(scm);
+  return true;
 }
 
 bool manager::auto_register_service() {
