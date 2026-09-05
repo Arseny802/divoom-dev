@@ -44,11 +44,11 @@ void service::run() {
 void service::process_cycle() {
   auto all_accounts = storage_->list_accounts();
   if (all_accounts.empty()) {
-    log()->warning("No accounts found in storage");
+    log()->critical("No accounts found in storage");
     return;
   }
 
-  auto events = calendar_manager_->get_next_48h_events();
+  auto events = calendar_manager_->get_next_events();
   std::string text = event_formatter_->format(events);
   device_updater_->update(text, all_accounts[0].login, all_accounts[0].password);
 }

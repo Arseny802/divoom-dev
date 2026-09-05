@@ -1,14 +1,42 @@
-#include "lifecycle/manager.h"
-#include "core/service.h"
-#include "setup.h"
-
-#include <boost/process.hpp>
-
 #include "divoom/divoom.hpp"
 #include "ics/ics.hpp"
 #include "storage/storage.hpp"
 
+#include "core/service.h"
+#include "manager.h"
+#include "setup.h"
+
+#include <boost/process.hpp>
+
+#include <filesystem>
+
+#if defined(_WIN32) || defined(_WIN64)
+#  include <windows.h>
+#endif
+
+namespace fs = std::filesystem;
+
 namespace divoomdev::service::lifecycle {
+
+namespace {
+
+bool ensure_directory(const std::string_view path) {
+  try {
+    if (!fs::exists(path)) {
+      if (!fs::create_directories(path)) {
+        return false;
+      }
+#if defined(_WIN32) || defined(_WIN64)
+      SetFileAttributesA(path.data(), FILE_ATTRIBUTE_NORMAL);
+#endif
+    }
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+}  // namespace
 
 // ======================== Common ========================
 
@@ -33,6 +61,19 @@ void initialize_logging() {
 
 int manager::run(int argc, char* argv[]) {
   initialize_logging();
+
+  // Ensure data and log directories exist
+  const auto& data_dir = setup::DATA_DIR;
+  const auto& log_dir = setup::LOG_DIR;
+  if (!ensure_directory(data_dir)) {
+    log()->error("Cannot create data directory: {}", data_dir);
+    return EXIT_FAILURE;
+  }
+  if (!ensure_directory(log_dir)) {
+    log()->error("Cannot create log directory: {}", log_dir);
+    return EXIT_FAILURE;
+  }
+
   auto core = create_service_core();
   core->set_update_interval(setup::UPDATE_INTERVAL);
 

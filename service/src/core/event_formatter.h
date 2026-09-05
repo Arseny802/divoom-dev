@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "common/event.h"
+#include "ics/scheduled_event.h"
 
 namespace divoomdev::service::core {
 
@@ -16,8 +17,16 @@ class event_formatter {
  public:
   using event_list = std::vector<common::event>;
 
+  event_formatter() noexcept;
+  ~event_formatter() noexcept;
+  event_formatter(std::string default_message) noexcept;
+
   /// Форматирует события в текст с интервалами и суммариями.
   std::string format(const event_list& events);
+  std::string format(const ics::scheduled_event_list& events);
+
+ private:
+  const std::string default_message_ = "Нет событий в календаре";
 };
 
 }  // namespace divoomdev::service::core

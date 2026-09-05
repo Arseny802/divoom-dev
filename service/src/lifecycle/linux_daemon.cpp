@@ -1,6 +1,8 @@
 #if !defined(_WIN32) && !defined(_WIN64)
 
 // clang-format off
+#include <string>
+
 #include "service/lifecycle_manager.h"
 #include "service/service_core.h"
 #include "storage/storage.hpp"
@@ -31,7 +33,8 @@ void daemon_signal_handler(int signum) {
 }
 
 std::unique_ptr<core::service> manager::create_service_core() {
-  auto storage = storage::open_storage(storage::backend_type::sqlite, "config.db");
+  auto storage = storage::open_storage(storage::backend_type::sqlite,
+                                       std::string(setup::DATA_DIR) + "/" + setup::DATABASE_FILE);
   return std::make_unique<core::service>(std::move(storage));
 }
 
@@ -56,22 +59,23 @@ bool manager::auto_register_service() {
 
   log()->info("Auto-creating systemd unit: {}", unit_path);
 
-  std::string unit_content = R"(# Divoom Service - auto-generated
-[Unit]
-Description=" + setup::SERVICE_DESCRIPTION + R"
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=") + exe_path + R"("
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-)";
+  std::string unit_content = "# Divoom Service - auto-generated\n"
+                             "[Unit]\n"
+                             "Description=" + setup::SERVICE_DESCRIPTION + "\n"
+                             "After=network.target\n"
+                             "\n"
+                             "[Service]\n"
+                             "Type=simple\n"
+                             "Environment=DIVOOMDEV_DATA_DIR=" + std::string(setup::DATA_DIR) + "\n"
+                             "Environment=DIVOOMDEV_LOG_DIR=" + std::string(setup::LOG_DIR) + "\n"
+                             "ExecStart=" + exe_path + "\n"
+                             "Restart=on-failure\n"
+                             "RestartSec=5\n"
+                             "StandardOutput=journal\n"
+                             "StandardError=journal\n"
+                             "\n"
+                             "[Install]\n"
+                             "WantedBy=multi-user.target\n";
 
   // Записываем unit-файл
   {

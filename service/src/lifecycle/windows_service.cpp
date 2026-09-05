@@ -1,4 +1,5 @@
 #include <memory>
+#include <string>
 #if defined(_WIN32) || defined(_WIN64)
 
 // clang-format off
@@ -76,7 +77,8 @@ void WINAPI service_main(DWORD argc, LPWSTR* argv) {
 
 std::unique_ptr<core::service> manager::create_service_core() {
 
-  auto storage = storage::open_storage(storage::backend_type::sqlite, "config.db");
+  auto storage = storage::open_storage(storage::backend_type::sqlite,
+                                       std::string(setup::DATA_DIR) + "/" + std::string(setup::DATABASE_FILE));
   return std::make_unique<core::service>(std::move(storage));
 }
 
@@ -87,10 +89,9 @@ bool manager::is_running_as_service() {
 bool manager::check_admin_privileges() {
   SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE);
   if (!scm) {
-    log()->error(
-        "OpenSCManager failed (error {}): insufficient privileges. "
-        "Please run as Administrator.",
-        GetLastError());
+    log()->error("OpenSCManager failed (error {}): insufficient privileges. "
+                 "Please run as Administrator.",
+                 GetLastError());
     return false;
   }
   CloseServiceHandle(scm);
@@ -98,10 +99,19 @@ bool manager::check_admin_privileges() {
 }
 
 bool manager::auto_register_service() {
-  auto exe_path = fs::current_path().string();
+  wchar_t exe_path_w[MAX_PATH] = {};
+  const DWORD len = GetModuleFileNameW(nullptr, exe_path_w, MAX_PATH);
+  if (len == 0 || len == MAX_PATH) {
+    log()->error("GetModuleFileNameW failed: {}", GetLastError());
+    return false;
+  }
+  std::wstring exe_path_wide(exe_path_w);
+  const std::string exe_path(exe_path_wide.begin(), exe_path_wide.end());
+
   std::string service_name = setup::SERVICE_NAME;
 
   log()->info("Auto-registering service: {}", service_name);
+  log()->info("Executable path: {}", exe_path);
 
   SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE);
   if (!scm) {
@@ -128,18 +138,18 @@ bool manager::auto_register_service() {
     log()->info("Service already exists, ensuring auto-start");
   } else {
     svc = CreateServiceW(scm,
-                         setup::SERVICE_NAME_W,
-                         setup::SERVICE_DISPLAY_NAME_W,
-                         SERVICE_ALL_ACCESS,
-                         SERVICE_WIN32_OWN_PROCESS,
-                         SERVICE_AUTO_START,
-                         SERVICE_ERROR_NORMAL,
-                         fs::current_path().c_str(),
-                         nullptr,
-                         nullptr,
-                         nullptr,
-                         nullptr,
-                         nullptr);
+                          setup::SERVICE_NAME_W,
+                          setup::SERVICE_DISPLAY_NAME_W,
+                          SERVICE_ALL_ACCESS,
+                          SERVICE_WIN32_OWN_PROCESS,
+                          SERVICE_AUTO_START,
+                          SERVICE_ERROR_NORMAL,
+                          exe_path_w,
+                          nullptr,
+                          nullptr,
+                          nullptr,
+                          nullptr,
+                          nullptr);
 
     if (!svc) {
       log()->error("CreateService failed: {}", GetLastError());
