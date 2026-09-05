@@ -26,6 +26,8 @@ class service {
   /// Устанавливает интервал обновления (по умолчанию 5 минут).
   void set_update_interval(std::chrono::minutes interval);
 
+  storage::i_settings_storage* get_storage();
+
  private:
   void process_cycle();
 

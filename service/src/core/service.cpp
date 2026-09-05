@@ -18,6 +18,10 @@ void service::set_update_interval(std::chrono::minutes interval) {
   update_interval_ = interval;
 }
 
+storage::i_settings_storage* service::get_storage() {
+  return storage_.get();
+}
+
 void service::run() {
   log()->info("Service loop started");
 

@@ -1,4 +1,6 @@
 #include "divoom/divoom.hpp"
+#include "hare/config_default.h"
+#include "hare/hare_loggers.h"
 #include "ics/ics.hpp"
 #include "storage/storage.hpp"
 
@@ -50,11 +52,15 @@ void manager::run_console(core::service* core) {
   core->run();
 }
 
-void initialize_logging() {
-  log()->info("Application started. PID: {}", boost::this_process::get_id());
-  std::ignore = divoomdev::divoom::get_logger();
-  std::ignore = divoomdev::storage::get_logger();
-  std::ignore = divoomdev::ics::get_logger();
+void initialize_logging(const std::string_view path = setup::LOG_DIR) {
+  hare::config_ptr cfg = std::make_unique<hare::config_default>(PROJECT_NAME, MODULE_NAME);
+  cfg->set_log_path(path.data());
+  hare::register_logger(std::move(cfg));
+  std::ignore = divoomdev::divoom::get_logger(path.data());
+  std::ignore = divoomdev::storage::get_logger(path.data());
+  std::ignore = divoomdev::ics::get_logger(path.data());
+
+  log()->info("Application '{}' (version {}) started. PID: {}", PROJECT_NAME, VERSION, boost::this_process::get_id());
 }
 
 // ======================== Entry Point ========================

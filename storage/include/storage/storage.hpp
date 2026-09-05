@@ -9,7 +9,7 @@
 
 namespace divoomdev::storage {
 
-hare::hlogger_ptr get_logger();
+hare::hlogger_ptr get_logger(const std::string& path = {});
 
 /// Открывает хранилище настроек на выбранном бэкенде.
 ///
