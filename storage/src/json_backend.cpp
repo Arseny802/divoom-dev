@@ -12,6 +12,8 @@
 #  include <windows.h>
 #endif
 
+#include <nlohmann/json.hpp>
+
 namespace divoomdev::storage {
 
 namespace fs = std::filesystem;

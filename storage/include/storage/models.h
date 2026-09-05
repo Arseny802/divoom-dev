@@ -1,5 +1,4 @@
 #pragma once
-#include <nlohmann/json.hpp>
 #include <string>
 
 namespace divoomdev::storage {
@@ -22,7 +21,9 @@ struct calendar_source {
   bool enabled = true;
 };
 
+#ifdef NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(account, service, login, password);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(calendar_source, url, priority, enabled);
+#endif
 
 }  // namespace divoomdev::storage
