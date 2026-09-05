@@ -13,6 +13,3 @@ MAKE_GETTER(log)
 }  // namespace divoomdev::service
 
 // External Libraries
-#include <cpr/cpr.h>
-
-#include <nlohmann/json.hpp>

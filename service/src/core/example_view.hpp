@@ -1,12 +1,12 @@
 #pragma once
-#include "common/common.hpp"
+#include "common/display_rendered.h"
 
-namespace divoomdev::service {
+namespace divoomdev::service::core {
 
-common::display_rendered_list get_display_list() {
+common::display_rendered_list get_display_list() {  // NOLINT
   common::display_rendered_list display_list;
-  std::string backgroud_image_addr = "https://f.divoom-gz.com/group1/M00/0C/53/rBAAM2faipuEYhJQAAAAAAsMG7w762.jpg";
-  int backgroud_image_local_flag = 0;
+  // std::string backgroud_image_addr = "https://f.divoom-gz.com/group1/M00/0C/53/rBAAM2faipuEYhJQAAAAAAsMG7w762.jpg";
+  // int backgroud_image_local_flag = 0;
 
   // Item 1: NetData (Score)
   {
@@ -264,4 +264,4 @@ common::display_rendered_list get_display_list() {
   return display_list;
 }
 
-}  // namespace divoomdev::service
+}  // namespace divoomdev::service::core

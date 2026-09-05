@@ -1,0 +1,35 @@
+#include "event_formatter.h"
+
+#include <ctime>
+#include <format>
+
+namespace divoomdev::service::core {
+
+std::string format_local_time(std::chrono::time_point<std::chrono::system_clock> tp, const char* fmt) {
+  auto t = std::chrono::system_clock::to_time_t(tp);
+  struct tm tm;
+  localtime_s(&tm, &t);
+  char buf[64];
+  strftime(buf, sizeof(buf), fmt, &tm);
+  return std::string(buf);
+}
+
+std::string event_formatter::format(const event_list& events) {
+  std::string text;
+  text.reserve(40 * sizeof(char*) * 512);
+
+  for (const auto& event: events) {
+    log()->info("{} {} {} {}",
+                event.summary,
+                event.location,
+                format_local_time(event.start, "%Y-%m-%d %H:%M:%S"),
+                format_local_time(event.end, "%Y-%m-%d %H:%M:%S"));
+
+    text += std::format(
+        "{}-{}: {}\n", format_local_time(event.start, "%H:%M"), format_local_time(event.end, "%H:%M"), event.summary);
+  }
+
+  return text;
+}
+
+}  // namespace divoomdev::service::core

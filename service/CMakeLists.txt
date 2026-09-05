@@ -1,10 +1,6 @@
 project(divoomdev.service VERSION ${CMAKE_PROJECT_VERSION})
 
-find_package(cpr CONFIG REQUIRED)
-
 add_target(${PROJECT_NAME} EXECUTABLE
-  INCLUDE_PATH
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
   SOURCES_PATH 
     ${CMAKE_CURRENT_SOURCE_DIR}/src
   PCH_PRIVATE
@@ -14,7 +10,6 @@ add_target(${PROJECT_NAME} EXECUTABLE
     divoomdev.divoom
     divoomdev.storage
     divoomdev.ics
-    cpr::cpr
   TEST_SOURCES_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/tests
   TEST_SOURCES

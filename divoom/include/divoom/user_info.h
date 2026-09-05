@@ -7,6 +7,8 @@ struct user_info {
   int UserId = 0;
 };
 
+#ifdef NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(user_info, Token, UserId);
+#endif
 
 }  // namespace divoomdev::divoom
