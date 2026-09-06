@@ -252,6 +252,53 @@ void sqlite_backend::remove_calendar_source(const std::string& url) {
   sqlite3_step(st.get());
 }
 
+void sqlite_backend::set_meta(const std::string& key, const std::string& value) {
+  sqlite_stmt st(db_,
+                 "INSERT INTO meta(key, value) VALUES(?1, ?2) "
+                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value;");
+  if (!st) {
+    return;
+  }
+  st.bind_text(1, key);
+  st.bind_text(2, value);
+  sqlite3_step(st.get());
+}
+
+std::optional<std::string> sqlite_backend::get_meta(const std::string& key) const {
+  sqlite_stmt st(db_, "SELECT value FROM meta WHERE key=?1;");
+  if (!st) {
+    return std::nullopt;
+  }
+  st.bind_text(1, key);
+  if (!step_row(st.get())) {
+    return std::nullopt;
+  }
+  return std::string(reinterpret_cast<const char*>(sqlite3_column_text(st.get(), 0)));
+}
+
+std::vector<std::pair<std::string, std::string>> sqlite_backend::list_meta() const {
+  std::vector<std::pair<std::string, std::string>> result;
+  sqlite_stmt st(db_, "SELECT key, value FROM meta ORDER BY key;");
+  if (!st) {
+    return result;
+  }
+  while (step_row(st.get())) {
+    std::string k = reinterpret_cast<const char*>(sqlite3_column_text(st.get(), 0));
+    std::string v = reinterpret_cast<const char*>(sqlite3_column_text(st.get(), 1));
+    result.push_back(std::make_pair(std::move(k), std::move(v)));
+  }
+  return result;
+}
+
+void sqlite_backend::delete_meta(const std::string& key) {
+  sqlite_stmt st(db_, "DELETE FROM meta WHERE key=?1;");
+  if (!st) {
+    return;
+  }
+  st.bind_text(1, key);
+  sqlite3_step(st.get());
+}
+
 void sqlite_backend::clear() {
   std::string err;
   if (!exec("BEGIN;", err)) {
@@ -260,7 +307,8 @@ void sqlite_backend::clear() {
   }
   const bool ok1 = exec("DELETE FROM accounts;", err);
   const bool ok2 = ok1 && exec("DELETE FROM calendar_sources;", err);
-  if (!ok2) {
+  const bool ok3 = ok2 && exec("DELETE FROM meta;", err);
+  if (!ok3) {
     log()->error("storage: clear failed: {}", err);
     exec("ROLLBACK;", err);
     return;

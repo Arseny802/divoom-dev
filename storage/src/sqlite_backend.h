@@ -30,6 +30,11 @@ class sqlite_backend final : public i_settings_storage {
   std::vector<calendar_source> list_calendar_sources() const override;
   void remove_calendar_source(const std::string& url) override;
 
+  void set_meta(const std::string& key, const std::string& value) override;
+  std::optional<std::string> get_meta(const std::string& key) const override;
+  std::vector<std::pair<std::string, std::string>> list_meta() const override;
+  void delete_meta(const std::string& key) override;
+
   void clear() override;
 
  private:

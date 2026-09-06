@@ -36,6 +36,17 @@ class i_settings_storage {
   /// Удаляет источник по URL. Не ошибка, если его нет.
   virtual void remove_calendar_source(const std::string& url) = 0;
 
+  // ---- Метаданные (ключ-значение) ------------------------------------------
+
+  /// Сохраняет значение по ключу. Если ключ уже существует — перезаписывает.
+  virtual void set_meta(const std::string& key, const std::string& value) = 0;
+  /// Возвращает значение по ключу, либо `nullopt` если ключ отсутствует.
+  virtual std::optional<std::string> get_meta(const std::string& key) const = 0;
+  /// Возвращает все пары ключ-значение.
+  virtual std::vector<std::pair<std::string, std::string>> list_meta() const = 0;
+  /// Удаляет ключ. Не ошибка, если его нет.
+  virtual void delete_meta(const std::string& key) = 0;
+
   // ---- Обслуживание --------------------------------------------------------
 
   /// Полностью очищает хранилище (все таблицы/ключи).

@@ -28,6 +28,11 @@ class json_backend final : public i_settings_storage {
   std::vector<calendar_source> list_calendar_sources() const override;
   void remove_calendar_source(const std::string& url) override;
 
+  void set_meta(const std::string& key, const std::string& value) override;
+  std::optional<std::string> get_meta(const std::string& key) const override;
+  std::vector<std::pair<std::string, std::string>> list_meta() const override;
+  void delete_meta(const std::string& key) override;
+
   void clear() override;
 
  private:
@@ -35,8 +40,10 @@ class json_backend final : public i_settings_storage {
   bool save() const;
   nlohmann::json& accounts_array() { return doc_["accounts"]; }
   nlohmann::json& sources_array() { return doc_["calendar_sources"]; }
+  nlohmann::json& meta_object() { return doc_["meta"]; }
   const nlohmann::json& accounts_array() const { return doc_["accounts"]; }
   const nlohmann::json& sources_array() const { return doc_["calendar_sources"]; }
+  const nlohmann::json& meta_object() const { return doc_["meta"]; }
 
   std::string path_;
   nlohmann::json doc_;

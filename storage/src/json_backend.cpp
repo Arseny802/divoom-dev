@@ -44,6 +44,7 @@ void json_backend::load() {
       {"schema_version", 1},
       {"accounts", nlohmann::json::array()},
       {"calendar_sources", nlohmann::json::array()},
+      {"meta", nlohmann::json::object()},
   };
 
   std::ifstream in(path_, std::ios::binary);
@@ -170,6 +171,33 @@ void json_backend::remove_calendar_source(const std::string& url) {
 void json_backend::clear() {
   doc_["accounts"] = nlohmann::json::array();
   doc_["calendar_sources"] = nlohmann::json::array();
+  doc_["meta"] = nlohmann::json::object();
+  save();
+}
+
+void json_backend::set_meta(const std::string& key, const std::string& value) {
+  meta_object()[key] = value;
+  save();
+}
+
+std::optional<std::string> json_backend::get_meta(const std::string& key) const {
+  auto it = doc_["meta"].find(key);
+  if (it == doc_["meta"].end()) {
+    return std::nullopt;
+  }
+  return it->get<std::string>();
+}
+
+std::vector<std::pair<std::string, std::string>> json_backend::list_meta() const {
+  std::vector<std::pair<std::string, std::string>> result;
+  for (const auto& [key, value]: doc_["meta"].items()) {
+    result.push_back(std::make_pair(key, value.get<std::string>()));
+  }
+  return result;
+}
+
+void json_backend::delete_meta(const std::string& key) {
+  doc_["meta"].erase(key);
   save();
 }
 

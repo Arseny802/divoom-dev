@@ -26,7 +26,7 @@ class event_formatter {
   std::string format(const ics::scheduled_event_list& events);
 
  private:
-  const std::string default_message_ = "Нет событий в календаре";
+  const std::string default_message_ = " - Нет событий в календаре";
 };
 
 }  // namespace divoomdev::service::core

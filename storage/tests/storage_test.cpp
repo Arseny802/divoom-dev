@@ -169,4 +169,124 @@ TEST_P(StorageTest, ClearRemovesAllData) {
   EXPECT_TRUE(store->list_calendar_sources().empty());
 }
 
+// ============================================================================
+// Метаданные (ключ-значение)
+// ============================================================================
+
+TEST_P(StorageTest, SetAndGetMeta) {
+  auto store = open();
+  ASSERT_NE(store, nullptr);
+
+  store->set_meta("theme", "dark");
+  store->set_meta("lang", "ru");
+
+  auto theme = store->get_meta("theme");
+  ASSERT_TRUE(theme.has_value());
+  EXPECT_EQ(*theme, "dark");
+
+  auto lang = store->get_meta("lang");
+  ASSERT_TRUE(lang.has_value());
+  EXPECT_EQ(*lang, "ru");
+
+  EXPECT_FALSE(store->get_meta("missing").has_value());
+}
+
+TEST_P(StorageTest, SetMetaOverridesExisting) {
+  auto store = open();
+  ASSERT_NE(store, nullptr);
+
+  store->set_meta("version", "1");
+  store->set_meta("version", "2");
+
+  auto v = store->get_meta("version");
+  ASSERT_TRUE(v.has_value());
+  EXPECT_EQ(*v, "2");
+}
+
+TEST_P(StorageTest, ListMetaReturnsAllPairs) {
+  auto store = open();
+  ASSERT_NE(store, nullptr);
+
+  store->set_meta("beta", "true");
+  store->set_meta("alpha", "false");
+  store->set_meta("gamma", "123");
+
+  auto pairs = store->list_meta();
+
+  // SQLite-бэкенд создаёт служебную запись schema_version, JSON — нет.
+  const auto expected = (GetParam().type == backend_type::sqlite) ? 4u : 3u;
+  ASSERT_EQ(pairs.size(), expected);
+
+  // list_meta возвращает упорядоченный по ключу список
+  EXPECT_EQ(pairs[0].first, "alpha");
+  EXPECT_EQ(pairs[0].second, "false");
+  EXPECT_EQ(pairs[1].first, "beta");
+  EXPECT_EQ(pairs[1].second, "true");
+  EXPECT_EQ(pairs[2].first, "gamma");
+  EXPECT_EQ(pairs[2].second, "123");
+
+  if (GetParam().type == backend_type::sqlite) {
+    EXPECT_EQ(pairs[3].first, "schema_version");
+    EXPECT_EQ(pairs[3].second, "1");
+  }
+}
+
+TEST_P(StorageTest, DeleteMetaRemovesKey) {
+  auto store = open();
+  ASSERT_NE(store, nullptr);
+
+  store->set_meta("temp", "value");
+  EXPECT_TRUE(store->get_meta("temp").has_value());
+
+  store->delete_meta("temp");
+  EXPECT_FALSE(store->get_meta("temp").has_value());
+
+  // Удаление несуществующего ключа — не ошибка
+  store->delete_meta("nonexistent");
+}
+
+TEST_P(StorageTest, ListMetaEmptyInitially) {
+  auto store = open();
+  ASSERT_NE(store, nullptr);
+
+  // SQLite-бэкенд создаёт служебную запись schema_version, JSON — нет.
+  const auto expected = (GetParam().type == backend_type::sqlite) ? 1u : 0u;
+  auto pairs = store->list_meta();
+  ASSERT_EQ(pairs.size(), expected);
+
+  if (GetParam().type == backend_type::sqlite) {
+    EXPECT_EQ(pairs[0].first, "schema_version");
+    EXPECT_EQ(pairs[0].second, "1");
+  }
+}
+
+TEST_P(StorageTest, MetaPersistsAcrossReopen) {
+  {
+    auto store = open();
+    ASSERT_NE(store, nullptr);
+    store->set_meta("persist_key", "persist_value");
+  }  // закрываем хранилище
+
+  auto store = open();
+  ASSERT_NE(store, nullptr);
+  auto val = store->get_meta("persist_key");
+  ASSERT_TRUE(val.has_value());
+  EXPECT_EQ(*val, "persist_value");
+}
+
+TEST_P(StorageTest, ClearRemovesMetaToo) {
+  auto store = open();
+  ASSERT_NE(store, nullptr);
+
+  store->set_meta("to_remove", "yes");
+  store->upsert_account(account{"s1", "l", "p"});
+
+  store->clear();
+
+  EXPECT_TRUE(store->list_accounts().empty());
+  EXPECT_TRUE(store->list_calendar_sources().empty());
+  EXPECT_TRUE(store->list_meta().empty());
+  EXPECT_FALSE(store->get_meta("to_remove").has_value());
+}
+
 }  // namespace

@@ -228,7 +228,7 @@ TEST(EventFormatter, DefaultConstructor) {
   event_formatter formatter;
   event_list events;
   auto result = formatter.format(events);
-  EXPECT_EQ(result, "Нет событий в календаре");
+  EXPECT_EQ(result, " - Нет событий в календаре");
 }
 
 TEST(EventFormatter, CustomDefaultMessage) {

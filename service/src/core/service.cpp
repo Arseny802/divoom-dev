@@ -1,9 +1,13 @@
 #include "service.h"
 #include "device_updater.h"
 #include "event_formatter.h"
+#include "jenkins/build_info.h"
+#include "jira/issue.h"
 #include "lifecycle/service_state.h"
 
 #include "ics/event_manager.h"
+#include "jenkins/client.h"
+#include "jira/client.h"
 #include "storage/i_storage.h"
 
 namespace divoomdev::service::core {
@@ -94,14 +98,17 @@ void service::run() {
 }
 
 void service::pause() {
+  AUTOTRACEF;
   lifecycle::g_service_paused() = true;
 }
 
 void service::resume() {
+  AUTOTRACEF;
   lifecycle::g_service_paused() = false;
 }
 
 void service::stop() {
+  AUTOTRACEF;
   lifecycle::g_service_running() = false;
 }
 
@@ -110,6 +117,58 @@ void service::process_cycle() {
   AUTOMEASUREF;
   auto events = calendar_manager_->get_next_events();
   std::string text = event_formatter_->format(events);
+
+  const auto jira_account = storage_->get_account("jira");
+  const auto jira_url = storage_->get_meta("jira_url");
+  if (jira_account.has_value() && jira_url.has_value()) {
+    jira::client::config cfg;
+    cfg.base_url = jira_url.value();
+    cfg.email = jira_account->login;
+    cfg.api_token = jira_account->password;
+    jira::client client(cfg);
+
+    jira::issues_vec result = client.GetActiveUserIssues();
+    if (!result.empty()) {
+      for (auto& item: result) {
+        text += item.key + ": " + item.summary + '\n';
+      }
+    } else {
+      text += " - Нет задач в Jira\n";
+    }
+  } else {
+    log()->warning("Jira account or URL not found in storage!");
+  }
+
+  const auto jenkins_account = storage_->get_account("jenkins");
+  const auto jenkins_url = storage_->get_meta("jenkins_url");
+  if (jenkins_account.has_value() && jenkins_url.has_value()) {
+    jenkins::client::config cfg;
+    cfg.base_url = jenkins_url.value();
+    cfg.username = jenkins_account->login;
+    cfg.api_token = jenkins_account->password;
+    jenkins::client client(cfg);
+
+    jenkins::build_info_list result;
+    constexpr std::array jobs = {"build/job/custom/job/windows/job/git",
+                                 "build/job/custom/job/debian/job/git",
+                                 "build/job/custom/job/rockchip/job/git",
+                                 "build/job/custom/job/lnvr/job/git"};
+    std::for_each(jobs.begin(), jobs.end(), [&client, &cfg, &result](const auto& job) {
+      auto builds = client.GetUserBuilds(job, cfg.username, 100);
+      result.insert(result.end(), builds.begin(), builds.end());
+    });
+
+    if (!result.empty()) {
+      for (auto& item: result) {
+        text += std::to_string(item.number) + ": " + item.result + " (" + item.status + ")\n";
+      }
+    } else {
+      text += " - Нет сборок в Jenkins\n";
+    }
+  } else {
+    log()->warning("Jenkins account or URL not found in storage!");
+  }
+
   device_updater_->update(text);
 }
 

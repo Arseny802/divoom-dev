@@ -10,13 +10,14 @@ add_target(${PROJECT_NAME} EXECUTABLE
     divoomdev.divoom
     divoomdev.storage
     divoomdev.ics
+    divoomdev.jenkins
+    divoomdev.jira
   TEST_SOURCES_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/tests
   TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../storage/mocs/dbmoc.hpp
   TEST_USES
     divoomdev.divoom
-    divoomdev.ics
     divoomdev.storage
   TEST_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/../storage/mocs/

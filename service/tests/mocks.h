@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -68,10 +69,34 @@ class mock_settings_storage final : public divoomdev::storage::i_settings_storag
   void clear() override {
     accounts_.clear();
     sources_.clear();
+    meta_.clear();
   }
+
+  // ---- Метаданные ----------------------------------------------------------
+
+  void set_meta(const std::string& key, const std::string& value) override { meta_[key] = value; }
+
+  std::optional<std::string> get_meta(const std::string& key) const override {
+    auto it = meta_.find(key);
+    if (it == meta_.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  std::vector<std::pair<std::string, std::string>> list_meta() const override {
+    std::vector<std::pair<std::string, std::string>> result;
+    for (const auto& [k, v]: meta_) {
+      result.push_back(std::make_pair(k, v));
+    }
+    return result;
+  }
+
+  void delete_meta(const std::string& key) override { meta_.erase(key); }
 
   std::vector<divoomdev::storage::account> accounts_;
   std::vector<divoomdev::storage::calendar_source> sources_;
+  std::map<std::string, std::string> meta_;
 };
 
 // ============================================================================
