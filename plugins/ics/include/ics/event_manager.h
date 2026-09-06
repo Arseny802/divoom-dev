@@ -39,10 +39,10 @@ class event_manager {
 
   /// Loads registered URLs (via the cached source) and returns the events within
   /// the configured window. Events marked CANCELED are excluded.
-  scheduled_event_list get_next_events();
+  virtual scheduled_event_list get_next_events();
 
   /// Convenience wrapper kept for compatibility (upper bound only).
-  scheduled_event_list get_next_events_scheduled();
+  virtual scheduled_event_list get_next_events_scheduled();
 
  private:
   void load_from_sources();

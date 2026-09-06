@@ -12,7 +12,7 @@ class client_async final : public client {
   client_async(std::string host = common::DIVOOMDEV_HOST);
   ~client_async();
 
-  std::vector<common::device> get_devices();
+  std::vector<common::device> get_devices() override;
 
  private:
   void add_request();

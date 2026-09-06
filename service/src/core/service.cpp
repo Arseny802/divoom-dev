@@ -15,6 +15,17 @@ service::service(storage_ptr storage)
   AUTOTRACEF;
 }
 
+service::service(storage_ptr storage,
+                 std::unique_ptr<device_updater> updater,
+                 std::unique_ptr<event_formatter> formatter,
+                 std::unique_ptr<ics::event_manager> calendar)
+    : storage_(std::move(storage)),
+      device_updater_(std::move(updater)),
+      event_formatter_(std::move(formatter)),
+      calendar_manager_(std::move(calendar)) {
+  AUTOTRACEF;
+}
+
 service::~service() {
   AUTOTRACEF;
 }

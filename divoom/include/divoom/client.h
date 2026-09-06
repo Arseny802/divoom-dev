@@ -12,11 +12,11 @@ namespace divoomdev::divoom {
 class client : public iclient {
  public:
   client(std::string host = common::DIVOOMDEV_HOST);
-  ~client();
+  ~client() override;
 
   user_info login(std::string email, std::string password);
 
-  common::device_list get_devices();
+  common::device_list get_devices() override;
   common::clock_list get_device_clockes(int device_id);
   common::font_list get_font_list();
 

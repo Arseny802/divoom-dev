@@ -12,9 +12,10 @@ namespace divoomdev::service::core {
 
 class device_updater {
  public:
-  device_updater() noexcept;
-  device_updater(std::string login, std::string password) noexcept;
-  ~device_updater();
+   device_updater() noexcept;
+   device_updater(std::string login, std::string password) noexcept;
+   explicit device_updater(std::unique_ptr<divoom::client> client) noexcept;
+   ~device_updater();
 
   void update_credentials(std::string login, std::string password) noexcept;
 

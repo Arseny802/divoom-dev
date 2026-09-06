@@ -18,6 +18,10 @@ class service {
   using storage_ptr = std::unique_ptr<storage::i_settings_storage>;
 
   explicit service(storage_ptr storage);
+  service(storage_ptr storage,
+          std::unique_ptr<class device_updater> updater,
+          std::unique_ptr<class event_formatter> formatter,
+          std::unique_ptr<ics::event_manager> calendar);
   service(const service& other) = delete;
   service& operator=(const service& other) = delete;
   service(service&& other);

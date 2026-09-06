@@ -14,6 +14,11 @@ device_updater::device_updater(std::string login, std::string password) noexcept
   client_ = std::make_unique<divoom::client>();
 }
 
+device_updater::device_updater(std::unique_ptr<divoom::client> client) noexcept: client_(std::move(client)) {
+  login_ = {};
+  password_ = {};
+}
+
 device_updater::~device_updater() = default;
 
 void device_updater::update_credentials(std::string login, std::string password) noexcept {
