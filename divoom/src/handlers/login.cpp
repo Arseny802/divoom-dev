@@ -7,7 +7,7 @@ login::login(std::string email, std::string password): handler(RequestType::POST
   request_.Command = "UserLogin";
   request_.Email = std::move(email);
   request_.Password = compute_md5(password);
-  log()->info("Email {}, Password {}", request_.Email, request_.Password);
+  log()->debug("Email {}, Password {}", request_.Email, request_.Password);
 }
 login::~login() = default;
 

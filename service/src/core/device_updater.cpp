@@ -7,30 +7,44 @@
 
 namespace divoomdev::service::core {
 
-device_updater::device_updater() noexcept { }
+device_updater::device_updater() noexcept: device_updater({}, {}) { }
 device_updater::device_updater(std::string login, std::string password) noexcept
     : login_(std::move(login)),
-      password_(std::move(password)) { }
+      password_(std::move(password)) {
+  client_ = std::make_unique<divoom::client>();
+}
 
 device_updater::~device_updater() = default;
 
 void device_updater::update_credentials(std::string login, std::string password) noexcept {
+  AUTOTRACEF;
   bool need_reauth = false;
-  need_reauth |= login != std::exchange(login_, std::move(login));
-  need_reauth |= password != std::exchange(password_, std::move(password));
+  need_reauth |= login_ != std::exchange(login_, std::move(login));
+  need_reauth |= password_ != std::exchange(password_, std::move(password));
   if (need_reauth) {
+    log()->info("Credentials changed, reauthenticating...");
     this->login();
     get_devices();
+  } else {
+    log()->debug("Credentials not changed, skipping reauthentication");
   }
 }
 
 void device_updater::update(const std::string& text) {
+  AUTOMEASUREF;
+
   if (std::hash<std::string>{}(text) == previous_text_hash_) {
     log()->info("Text hash not changed, skipping update");
     return;
   }
 
+  if (!devices_ || !user_info_) {
+    log()->error("No devices or user info, skipping update");
+    return;
+  }
+
   const auto retry_with_login = [this, &text](const std::exception& e) {
+    AUTOTRACEF;
     log()->warning("Token error: {}. Retrying with login...", e.what());
     if (login()) {
       get_devices();
@@ -71,10 +85,14 @@ void device_updater::update_device(int device_id, const std::string& text) {
 }
 
 bool device_updater::login() {
+  AUTOTRACEF;
   try {
     user_info_ = std::make_unique<divoom::user_info>(client_->login(login_, password_));
   } catch (const std::exception& e) {
     log()->error("Error: {}", e.what());
+    return false;
+  } catch (...) {
+    log()->critical("Unknown error while logging in to divoom");
     return false;
   }
 
@@ -83,10 +101,14 @@ bool device_updater::login() {
 }
 
 bool device_updater::get_devices() {
+  AUTOTRACEF;
   try {
     devices_ = std::make_unique<common::device_list>(client_->get_devices());
   } catch (const std::exception& e) {
     log()->error("Error: {}", e.what());
+    return false;
+  } catch (...) {
+    log()->critical("Unknown error while getting devices");
     return false;
   }
 

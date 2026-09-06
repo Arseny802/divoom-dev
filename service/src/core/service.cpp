@@ -11,15 +11,42 @@ namespace divoomdev::service::core {
 service::service(storage_ptr storage)
     : storage_(std::move(storage)),
       device_updater_(std::make_unique<device_updater>()),
-      event_formatter_(std::make_unique<event_formatter>()) { }
+      event_formatter_(std::make_unique<event_formatter>()) {
+  AUTOTRACEF;
+}
 
-service::~service() = default;
+service::~service() {
+  AUTOTRACEF;
+}
+
+service::service(service&& other)
+    : storage_(std::move(other.storage_)),
+      device_updater_(std::move(other.device_updater_)),
+      event_formatter_(std::move(other.event_formatter_)),
+      update_interval_(other.update_interval_) {
+  AUTOTRACEF;
+}
+
+service& service::operator=(service&& other) {
+  AUTOTRACEF;
+  storage_ = std::move(other.storage_);
+  device_updater_ = std::move(other.device_updater_);
+  event_formatter_ = std::move(other.event_formatter_);
+  update_interval_ = other.update_interval_;
+  return *this;
+}
 
 void service::set_update_interval(std::chrono::minutes interval) {
+  AUTOTRACEF;
   update_interval_ = interval;  // TODO: make configurable update_interval
 }
 
 storage::i_settings_storage* service::get_storage() {
+  AUTOTRACEF;
+  if (!storage_) {
+    log()->warning("Storage not initialized!");
+    return nullptr;
+  }
   return storage_.get();
 }
 
@@ -68,12 +95,20 @@ void service::stop() {
 }
 
 void service::process_cycle() {
+  AUTOFLUSH;
+  AUTOMEASUREF;
   auto events = calendar_manager_->get_next_events();
   std::string text = event_formatter_->format(events);
   device_updater_->update(text);
 }
 
 void service::get_db_info() {
+  AUTOTRACEF;
+  if (!storage_) {
+    log()->fatal("Storage not initialized!");
+    return;
+  }
+
   for (auto item: storage_->list_calendar_sources()) {
     calendar_manager_->add_calendar_url(item.url);
   }

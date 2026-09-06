@@ -69,3 +69,53 @@ TEST(IcsCache, SetTtlChangesFreshness) {
   EXPECT_TRUE(cache.get("u", out));
   EXPECT_EQ(cache.ttl(), std::chrono::minutes(5));
 }
+
+TEST(IcsCache, StaleDataFallback) {
+  // Fresh TTL is short, stale TTL is long
+  ics_cache cache(std::chrono::milliseconds(30));
+  cache.set_stale_ttl(std::chrono::seconds(10));
+
+  cache.put("u", "old-content");
+
+  // Initially fresh
+  std::string out;
+  EXPECT_TRUE(cache.get("u", out));
+  EXPECT_EQ(out, "old-content");
+
+  // After fresh TTL expires, get() fails but get_stale() works
+  std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  EXPECT_FALSE(cache.get("u", out));
+  EXPECT_TRUE(cache.get_stale("u", out));
+  EXPECT_EQ(out, "old-content");
+}
+
+TEST(IcsCache, StaleDataEventuallyExpires) {
+  ics_cache cache(std::chrono::milliseconds(20));
+  cache.set_stale_ttl(std::chrono::milliseconds(50));
+
+  cache.put("u", "content");
+
+  // Wait for both fresh and stale TTL to expire
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  std::string out;
+  EXPECT_FALSE(cache.get("u", out));
+  EXPECT_FALSE(cache.get_stale("u", out));
+  EXPECT_FALSE(cache.has("u"));
+}
+
+TEST(IcsCache, HasAndIsStaleFresh) {
+  ics_cache cache(std::chrono::milliseconds(30));
+  cache.set_stale_ttl(std::chrono::seconds(10));
+
+  cache.put("u", "content");
+
+  // Initially fresh
+  EXPECT_TRUE(cache.has("u"));
+  EXPECT_FALSE(cache.is_stale_fresh("u"));
+
+  // After fresh TTL expires
+  std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  EXPECT_TRUE(cache.has("u"));
+  EXPECT_TRUE(cache.is_stale_fresh("u"));
+}

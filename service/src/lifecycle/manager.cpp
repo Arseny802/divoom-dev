@@ -1,5 +1,6 @@
 #include "divoom/divoom.hpp"
 #include "hare/config_default.h"
+#include "hare/defs.h"
 #include "hare/hare_loggers.h"
 #include "ics/ics.hpp"
 #include "storage/storage.hpp"
@@ -23,6 +24,7 @@ namespace divoomdev::service::lifecycle {
 namespace {
 
 bool ensure_directory(const std::string_view path) {
+  AUTOTRACEF;
   try {
     if (!fs::exists(path)) {
       if (!fs::create_directories(path)) {
@@ -43,11 +45,17 @@ bool ensure_directory(const std::string_view path) {
 // ======================== Common ========================
 
 bool manager::is_console_mode(int argc, char* argv[]) {
+  AUTOTRACEF;
   std::ignore = argv;
   return argc > 1;
 }
 
 void manager::run_console(core::service* core) {
+  AUTOMEASUREF;
+  if (!core) {
+    log()->error("Cannot run in console mode: service core is null");
+    return;
+  }
   log()->info("Running in console mode");
   core->run();
 }
@@ -80,8 +88,23 @@ int manager::run(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  auto core = create_service_core();
-  core->set_update_interval(setup::UPDATE_INTERVAL);
+  std::unique_ptr<core::service> core;
+  try {
+    AUTOFLUSH_ALL;
+    core = create_service_core();
+    core->set_update_interval(setup::UPDATE_INTERVAL);
+  } catch (const std::exception& e) {
+    log()->error("Failed to create service core: {}", e.what());
+    return EXIT_FAILURE;
+  } catch (...) {
+    log()->error("Failed to create service core: unknown error");
+    return EXIT_FAILURE;
+  }
+
+  if (!core) {
+    log()->error("Failed to create service core: null result");
+    return EXIT_FAILURE;
+  }
 
   if (is_console_mode(argc, argv)) {
     run_console(core.get());
@@ -90,6 +113,7 @@ int manager::run(int argc, char* argv[]) {
 
   log()->info("Running as service");
   if (!is_running_as_service()) {
+    AUTOFLUSH_ALL;
 
     log()->info("Not running as service, auto-registering...");
     if (!check_admin_privileges()) {
@@ -103,6 +127,9 @@ int manager::run(int argc, char* argv[]) {
     log()->info("Service registered. Exiting.");
     return EXIT_SUCCESS;
   }
+
+  log()->info("Entering run_service (StartServiceCtrlDispatcherW will block)");
+  log()->flush();
 
   run_service(std::move(core));
   return EXIT_SUCCESS;

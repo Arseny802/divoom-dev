@@ -20,6 +20,7 @@ class event_manager {
  public:
   /// Creates a manager wired to the real HTTP source with default settings.
   event_manager();
+  ~event_manager();
 
   /// Creates a manager with explicit collaborators (source is required).
   event_manager(std::shared_ptr<i_calendar_source> source,

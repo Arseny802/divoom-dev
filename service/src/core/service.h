@@ -18,6 +18,10 @@ class service {
   using storage_ptr = std::unique_ptr<storage::i_settings_storage>;
 
   explicit service(storage_ptr storage);
+  service(const service& other) = delete;
+  service& operator=(const service& other) = delete;
+  service(service&& other);
+  service& operator=(service&& other);
   ~service();
 
   // Запускает главный цикл (бесконечный).

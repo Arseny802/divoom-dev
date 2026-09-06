@@ -1,4 +1,5 @@
 #include <memory>
+#include <stdexcept>
 #include <string>
 #if defined(_WIN32) || defined(_WIN64)
 
@@ -11,12 +12,10 @@
 
 #include <aclapi.h>
 #include <atomic>
-#include <filesystem>
+#include <processthreadsapi.h>
 #include <thread>
 #include <windows.h>
 // clang-format on
-
-namespace fs = std::filesystem;
 
 namespace divoomdev::service::lifecycle {
 
@@ -67,8 +66,7 @@ void WINAPI service_ctrl_handler(DWORD ctrl) {
     log()->info("Service resumed");
     break;
 
-  default:
-    break;
+  default: break;
   }
 }
 
@@ -118,17 +116,30 @@ void WINAPI service_main(DWORD argc, LPWSTR* argv) {
 }
 
 std::unique_ptr<core::service> manager::create_service_core() {
+  AUTOTRACEF;
 
   auto storage = storage::open_storage(storage::backend_type::sqlite,
                                        std::string(setup::DATA_DIR) + "/" + std::string(setup::DATABASE_FILE));
+  if (!storage) {
+    throw std::runtime_error("storage: failed to open storage at '" + std::string(setup::DATA_DIR) + "/" +
+                             std::string(setup::DATABASE_FILE) + "'");
+  }
   return std::make_unique<core::service>(std::move(storage));
 }
 
 bool manager::is_running_as_service() {
-  return !GetConsoleWindow();
+  // Services run in Session 0; interactive processes run in Session > 0.
+  DWORD sessionId = 0;
+  if (!ProcessIdToSessionId(GetCurrentProcessId(), &sessionId)) {
+    log()->warning("ProcessIdToSessionId failed: {}", GetLastError());
+    return false;  // Fallback to console mode on error
+  }
+  log()->debug("Session ID: {}", sessionId);
+  return sessionId == 0;
 }
 
 bool manager::check_admin_privileges() {
+  AUTOTRACEF;
   SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE);
   if (!scm) {
     log()->error("OpenSCManager failed (error {}): insufficient privileges. "
@@ -141,6 +152,7 @@ bool manager::check_admin_privileges() {
 }
 
 bool manager::auto_register_service() {
+  AUTOTRACEF;
   wchar_t exe_path_w[MAX_PATH] = {};
   const DWORD len = GetModuleFileNameW(nullptr, exe_path_w, MAX_PATH);
   if (len == 0 || len == MAX_PATH) {
@@ -180,18 +192,18 @@ bool manager::auto_register_service() {
     log()->info("Service already exists, ensuring auto-start");
   } else {
     svc = CreateServiceW(scm,
-                          setup::SERVICE_NAME_W,
-                          setup::SERVICE_DISPLAY_NAME_W,
-                          SERVICE_ALL_ACCESS,
-                          SERVICE_WIN32_OWN_PROCESS,
-                          SERVICE_AUTO_START,
-                          SERVICE_ERROR_NORMAL,
-                          exe_path_w,
-                          nullptr,
-                          nullptr,
-                          nullptr,
-                          nullptr,
-                          nullptr);
+                         setup::SERVICE_NAME_W,
+                         setup::SERVICE_DISPLAY_NAME_W,
+                         SERVICE_ALL_ACCESS,
+                         SERVICE_WIN32_OWN_PROCESS,
+                         SERVICE_AUTO_START,
+                         SERVICE_ERROR_NORMAL,
+                         exe_path_w,
+                         nullptr,
+                         nullptr,
+                         nullptr,
+                         nullptr,
+                         nullptr);
 
     if (!svc) {
       log()->error("CreateService failed: {}", GetLastError());
@@ -241,6 +253,8 @@ bool manager::auto_register_service() {
 }
 
 void manager::run_service(std::unique_ptr<core::service>&& core) {
+  AUTOFLUSH_ALL;
+  AUTOTRACEF;
   g_service_core_ptr = std::move(core);
 
   SERVICE_TABLE_ENTRYW service_table[] = {{const_cast<LPWSTR>(setup::SERVICE_NAME_W), service_main},
