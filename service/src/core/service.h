@@ -39,6 +39,7 @@ class service {
 
  private:
   void process_cycle();
+  void get_db_info();
 
   storage_ptr storage_;
   std::unique_ptr<class device_updater> device_updater_;

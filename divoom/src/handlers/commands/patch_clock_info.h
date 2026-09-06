@@ -1,5 +1,6 @@
 #pragma once
 #include "../command.h"
+#include "common/display_rendered.h"
 #include "handler.hpp"
 
 namespace divoomdev::divoom::handlers::commands {

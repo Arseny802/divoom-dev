@@ -78,7 +78,7 @@ TEST(EventManager, UsesManualEventsWithoutSourceFetch) {
   mgr.add_event(mk("soon", "Soon", now + std::chrono::hours(1)));
   mgr.add_event(mk("far", "Far", now + std::chrono::hours(100)));
 
-  auto out = mgr.get_next_48h_scheduled();
+  auto out = mgr.get_next_events_scheduled();
   ASSERT_EQ(out.size(), 2u);
   EXPECT_EQ(out[0].uid, "past");
   EXPECT_EQ(out[1].uid, "soon");
@@ -109,7 +109,7 @@ TEST(EventManager, DefaultConstructorUsesHttpSource) {
   event_manager mgr;
   auto now = system_clock::now();
   mgr.add_event(mk("manual", "Manual Event", now + std::chrono::hours(1)));
-  auto out = mgr.get_next_48h_scheduled();
+  auto out = mgr.get_next_events_scheduled();
   ASSERT_EQ(out.size(), 1u);
   EXPECT_EQ(out[0].uid, "manual");
 }

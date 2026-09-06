@@ -40,11 +40,8 @@ class event_manager {
   /// the configured window. Events marked CANCELED are excluded.
   scheduled_event_list get_next_events();
 
-  /// Convenience wrapper kept for compatibility: same as get_next_events().
-  common::event_list get_next_48h_events();
-
   /// Convenience wrapper kept for compatibility (upper bound only).
-  scheduled_event_list get_next_48h_scheduled();
+  scheduled_event_list get_next_events_scheduled();
 
  private:
   void load_from_sources();
@@ -55,9 +52,9 @@ class event_manager {
   std::shared_ptr<i_calendar_source> source_;
   std::shared_ptr<ics_cache> cache_;
   calendar_settings settings_;
-  scheduled_event_list manual_events_;  // added via add_event()
+  scheduled_event_list manual_events_;   // added via add_event()
   scheduled_event_list fetched_events_;  // loaded from calendar_urls_
-  std::list<std::string> calendar_urls_;
+  std::set<std::string> calendar_urls_;
 };
 
 }  // namespace divoomdev::ics

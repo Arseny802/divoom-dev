@@ -1,11 +1,11 @@
 #pragma once
-#include "common/common.hpp"
-
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <vector>
+
+#include "divoom/exceptions.h"
+#include "status_codes.h"
 
 namespace divoomdev::divoom {
 
@@ -76,10 +76,47 @@ std::unique_ptr<nlohmann::json> handler<T1, T2>::parse_json(const std::string& d
     return nullptr;
   }
 
-  if ((*j)["ReturnCode"] != 0) {
-    log()->error("API error: {}", j->value("ReturnMessage", "Unknown error"));
-    return nullptr;
+  const auto status_code = j->at("ReturnCode").get<int>();
+  switch (status_code) {
+  case ErrorCode::OK: break;
+  case ErrorCode::HTTP_NORMAL_ERROR:
+  case ErrorCode::HTTP_REGISTER_ERROR1:
+  case ErrorCode::HTTP_REGISTER_ERROR2:
+  case ErrorCode::HTTP_ADD_BUDDY_ERROR:
+  case ErrorCode::HTTP_GET_ERROR:
+  case ErrorCode::HTTP_ERROR_CAN_NOT_MATCH:
+  case ErrorCode::HTTP_ERROR_CAN_NOT_DEAL_WITH:
+  case ErrorCode::HTTP_ERROR_WRONG_CMD:
+  case ErrorCode::HTTP_REQUEST_EMPTY:
+  case ErrorCode::HTTP_REQUEST_JSON_ERROR:
+  case ErrorCode::HTTP_BUDDY_HAD_FRIEND:
+  case ErrorCode::HTTP_HAD_NOT_FRIEND:
+  case ErrorCode::HTTP_GALLERY_UPLOAD_ERROR:
+  case ErrorCode::HTTP_PHONE_FORMAT_ERROR:
+  case ErrorCode::HTTP_PHONE_CHECK_ERROR:
+  case ErrorCode::HTTP_TOO_MATCH:
+  case ErrorCode::HTTP_NEED_CHECK:
+  case ErrorCode::BLACK_ERROR:
+  case ErrorCode::LIMIT_UPLOAD:
+  case ErrorCode::BLUETOOTH_PASSWORD_ERROR:
+  case ErrorCode::HTTP_LOCK_ACCOUNT:
+  case ErrorCode::HTTP_UPLOAD_TEXT_TO_SERVER:
+    {
+      auto code_name = magic_enum::enum_name(static_cast<ErrorCode>(status_code));
+      log()->error("API error '{}': {}", code_name, j->value("ReturnMessage", "Unknown error"));
+      return nullptr;
+    }
+  case ErrorCode::HTTP_LOGIN_ERROR_NO_USER: throw WrongUserException();
+  case ErrorCode::HTTP_LOGIN_ERROR_PASSWORD: throw WrongPasswordException();
+  case ErrorCode::HTTP_ERROR_TOKEN_MISSMATCH: throw TokenExpiredException();
+  case ErrorCode::FORBIDEN_ERROR: throw TokenExpiredException();
+  default:
+    {
+      log()->error("API error: {}", j->value("ReturnMessage", "Unknown error"));
+      return nullptr;
+    }
   }
+
   return j;
 }
 

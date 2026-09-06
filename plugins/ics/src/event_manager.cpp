@@ -32,7 +32,7 @@ void event_manager::set_settings(const calendar_settings& settings) {
 }
 
 void event_manager::add_calendar_url(const std::string& url) {
-  calendar_urls_.emplace_back(url);
+  calendar_urls_.emplace(url);
 }
 
 void event_manager::add_event(scheduled_event event) {
@@ -89,12 +89,7 @@ scheduled_event_list event_manager::get_next_events() {
   return selected;
 }
 
-common::event_list event_manager::get_next_48h_events() {
-  auto sched = get_next_events();
-  return common::event_list(sched.begin(), sched.end());
-}
-
-scheduled_event_list event_manager::get_next_48h_scheduled() {
+scheduled_event_list event_manager::get_next_events_scheduled() {
   load_from_sources();
 
   auto deadline = std::chrono::system_clock::now() + settings_.horizon;
