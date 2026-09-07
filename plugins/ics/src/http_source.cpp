@@ -57,11 +57,11 @@ std::string http_calendar_source::fetch(const std::string& url) {
     if (attempt > 0) {
       // Exponential backoff: delay * 2^(attempt-1)
       auto delay = opts_.retry_delay * (1 << (attempt - 1));
-      hlog()->warn("[ICS]: Retry {}/{} for {} after {}ms delay", attempt, opts_.retries, url, delay.count());
+      hlog()->warn("Retry {}/{} for {} after {}ms delay", attempt, opts_.retries, url, delay.count());
       std::this_thread::sleep_for(delay);
     }
 
-    hlog()->debug("[ICS]: Fetch attempt {}/{} {}", attempt + 1, opts_.retries + 1, url);
+    hlog()->debug("Fetch attempt {}/{} {}", attempt + 1, opts_.retries + 1, url);
 
     cpr::Response response = cpr::Get(cpr::Url{url},
                                       parameters,
@@ -75,7 +75,7 @@ std::string http_calendar_source::fetch(const std::string& url) {
 
     // Success
     if (response.status_code == 200) {
-      hlog()->info("[ICS]: Fetched {} (attempt {}/{}), status={}, size={}",
+      hlog()->info("Fetched {} (attempt {}/{}), status={}, size={}",
                    url,
                    attempt + 1,
                    opts_.retries + 1,
@@ -86,7 +86,7 @@ std::string http_calendar_source::fetch(const std::string& url) {
 
     // Non-transient client error (4xx except 429) — don't retry
     if (response.status_code >= 400 && response.status_code < 500 && response.status_code != 429) {
-      hlog()->error("[ICS]: Non-retryable HTTP error for {}: status={}", url, response.status_code);
+      hlog()->error("Non-retryable HTTP error for {}: status={}", url, response.status_code);
       return {};
     }
 
@@ -94,11 +94,11 @@ std::string http_calendar_source::fetch(const std::string& url) {
 
     // Check if this is a transient error worth retrying
     if (!is_transient_error(last_error)) {
-      hlog()->error("[ICS]: Non-transient error for {}: code={}, error={}", url, response.status_code, last_error);
+      hlog()->error("Non-transient error for {}: code={}, error={}", url, response.status_code, last_error);
       return {};
     }
 
-    hlog()->warn("[ICS]: Transient error for {} (attempt {}/{}): status={}, error={}",
+    hlog()->warn("Transient error for {} (attempt {}/{}): status={}, error={}",
                  url,
                  attempt + 1,
                  opts_.retries + 1,
@@ -107,11 +107,8 @@ std::string http_calendar_source::fetch(const std::string& url) {
   }
 
   // All retries exhausted
-  hlog()->error("[ICS]: Failed fetching {} after {} attempts: status={}, error={}",
-                url,
-                opts_.retries + 1,
-                last_status,
-                last_error);
+  hlog()->error(
+      "Failed fetching {} after {} attempts: status={}, error={}", url, opts_.retries + 1, last_status, last_error);
   return {};
 }
 

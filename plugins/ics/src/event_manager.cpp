@@ -49,7 +49,7 @@ void event_manager::add_event(scheduled_event event) {
 void event_manager::load_from_sources() {
   AUTOTRACE;
   if (!source_) {
-    hlog()->error("[ICS]: No calendar source configured");
+    hlog()->error("No calendar source configured");
     return;
   }
 
@@ -63,7 +63,7 @@ void event_manager::load_from_sources() {
 
     // Try fresh cache first
     if (cache_ && cache_->get(url, content)) {
-      hlog()->info("[ICS]: Cache hit for {}", url);  // no network round-trip
+      hlog()->info("Cache hit for {}", url);  // no network round-trip
       use_cached = true;
     } else {
       // Fetch from network
@@ -75,21 +75,21 @@ void event_manager::load_from_sources() {
 
     // If network fetch failed and we have stale cached data, use it
     if (content.empty() && cache_ && cache_->get_stale(url, content)) {
-      hlog()->warn("[ICS]: Network fetch failed for {}, using stale cached data", url);
+      hlog()->warn("Network fetch failed for {}, using stale cached data", url);
       use_cached = true;
     }
 
     // If still no content, skip this URL (parser handles empty content gracefully)
     if (content.empty()) {
-      hlog()->error("[ICS]: No data available for {} (network failed, no cache)", url);
+      hlog()->error("No data available for {} (network failed, no cache)", url);
       continue;
     }
 
     auto parsed = parser.parse(content);
     if (use_cached) {
-      hlog()->info("[ICS]: Parsed {} events from {} (cached)", parsed.size(), url);
+      hlog()->info("Parsed {} events from {} (cached)", parsed.size(), url);
     } else {
-      hlog()->info("[ICS]: Parsed {} events from {}", parsed.size(), url);
+      hlog()->info("Parsed {} events from {}", parsed.size(), url);
     }
     fetched_events_.insert(
         fetched_events_.end(), std::make_move_iterator(parsed.begin()), std::make_move_iterator(parsed.end()));
@@ -105,13 +105,14 @@ scheduled_event_list event_manager::combined() const {
 scheduled_event_list event_manager::get_next_events() {
   AUTOFLUSH;
   AUTOTRACE;
+  auto now = std::chrono::system_clock::now();
   load_from_sources();
-  auto win = detail::compute_window(std::chrono::system_clock::now(), settings_);
+  auto win = detail::compute_window(now, settings_);
 
   auto all = combined();
   scheduled_event_list selected;
   for (auto& ev: all) {
-    if (detail::in_window(ev.start, win))
+    if (detail::in_window(ev.start, win) && ev.end > now)
       selected.push_back(std::move(ev));
   }
 

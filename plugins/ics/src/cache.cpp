@@ -22,8 +22,7 @@ ics_cache::ics_cache(options opts)
       stale_ttl_(opts.stale_ttl),
       persist_path_(std::move(opts.persist_path)) { }
 
-ics_cache::ics_cache(std::chrono::milliseconds ttl)
-    : ttl_(ttl), stale_ttl_(std::chrono::hours(1)) { }
+ics_cache::ics_cache(std::chrono::milliseconds ttl): ttl_(ttl), stale_ttl_(std::chrono::hours(1)) { }
 
 void ics_cache::set_ttl(std::chrono::milliseconds ttl) {
   ttl_ = ttl;
@@ -107,22 +106,19 @@ bool ics_cache::save() const {
 
   std::ofstream ofs(persist_path_, std::ios::binary | std::ios::trunc);
   if (!ofs.is_open()) {
-    hlog()->error("[ICS]: Failed to open cache file for writing: {}", persist_path_);
+    hlog()->error("Failed to open cache file for writing: {}", persist_path_);
     return false;
   }
 
   for (const auto& [url, entry]: store_) {
     ofs << url << "\n";
     ofs << hash_content(entry.content) << "\n";
-    ofs << std::chrono::duration_cast<std::chrono::seconds>(
-             entry.fetched_at.time_since_epoch())
-            .count()
-        << "\n";
+    ofs << std::chrono::duration_cast<std::chrono::seconds>(entry.fetched_at.time_since_epoch()).count() << "\n";
     ofs << entry.content << "\n";
   }
 
   ofs.close();
-  hlog()->debug("[ICS]: Cache saved to {} ({} entries)", persist_path_, store_.size());
+  hlog()->debug("Cache saved to {} ({} entries)", persist_path_, store_.size());
   return true;
 }
 
@@ -132,7 +128,7 @@ bool ics_cache::load() {
 
   std::ifstream ifs(persist_path_, std::ios::binary);
   if (!ifs.is_open()) {
-    hlog()->debug("[ICS]: No cache file found at {}", persist_path_);
+    hlog()->debug("No cache file found at {}", persist_path_);
     return false;
   }
 
@@ -145,19 +141,20 @@ bool ics_cache::load() {
 
   while (std::getline(ifs, line)) {
     switch (state) {
-      case 0:
-        url = line;
-        state = 1;
-        break;
-      case 1:
-        expected_hash = std::stoull(line);
-        state = 2;
-        break;
-      case 2:
-        timestamp = std::stoll(line);
-        state = 3;
-        break;
-      case 3: {
+    case 0:
+      url = line;
+      state = 1;
+      break;
+    case 1:
+      expected_hash = std::stoull(line);
+      state = 2;
+      break;
+    case 2:
+      timestamp = std::stoll(line);
+      state = 3;
+      break;
+    case 3:
+      {
         // Content is everything until the next URL line (empty or not)
         // For simplicity, we read until we hit a line that looks like a URL
         // Actually, let's use a different approach: read remaining as content
@@ -173,7 +170,7 @@ bool ics_cache::load() {
     }
   }
 
-  hlog()->debug("[ICS]: Cache loaded from {} ({} entries)", persist_path_, store_.size());
+  hlog()->debug("Cache loaded from {} ({} entries)", persist_path_, store_.size());
   return true;
 }
 

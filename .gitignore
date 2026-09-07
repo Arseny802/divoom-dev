@@ -9,9 +9,13 @@ compile_commands.json
 config.db
 config.json
 
+.vscode
+.idea
+
 # AI files
 .codeassistant
 .gigacode
+.gigacode_vsc
 .koda
 
 # Prerequisites
